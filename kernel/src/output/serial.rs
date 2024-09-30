@@ -1,14 +1,14 @@
 use core::fmt::Write;
 
 use lazy_static::lazy_static;
-use spin::Mutex;
+use spinning_top::Spinlock;
 use uart_16550::SerialPort;
 
 lazy_static! {
-    pub static ref SERIAL_PORT: Mutex<SerialPort> = unsafe {
+    pub static ref SERIAL_PORT: Spinlock<SerialPort> = unsafe {
         let mut s = SerialPort::new(0x3F8);
         s.init();
-        Mutex::new(s)
+        Spinlock::new(s)
     };
 }
 

@@ -7,10 +7,10 @@ edition = "2021"
 bootloader_api = {version="0.11.7"}
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 noto-sans-mono-bitmap = "0.3.0"
-spin = "0.9.8"
 x86_64 = "0.15.1"
 buddy_system_allocator = "0.11.0"
 uart_16550 = "0.3.1"
+spinning_top = "0.3.0"
 
 [profile.dev]
 panic = "abort"

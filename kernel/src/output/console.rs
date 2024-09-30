@@ -7,14 +7,14 @@ use font_constants::BACKUP_CHAR;
 use noto_sans_mono_bitmap::{
     get_raster, get_raster_width, FontWeight, RasterHeight, RasterizedChar,
 };
-use spin::Mutex;
+use spinning_top::Spinlock;
 
 const LINE_SPACING: usize = 2;
 const LETTER_SPACING: usize = 0;
 
 const BORDER_PADDING: usize = 1;
 
-static WRITER: Mutex<Option<FrameBufferWriter>> = Mutex::new(None);
+static WRITER: Spinlock<Option<FrameBufferWriter>> = Spinlock::new(None);
 
 pub fn init_console(info: FrameBufferInfo, buffer: &'static mut [u8]) {
     *WRITER.lock() = Some(FrameBufferWriter::new(buffer, info));
