@@ -607,6 +607,7 @@ dependencies = [
  "bootloader_api",
  "buddy_system_allocator",
  "lazy_static",
+ "log",
  "noto-sans-mono-bitmap",
  "spinning_top",
  "uart_16550",

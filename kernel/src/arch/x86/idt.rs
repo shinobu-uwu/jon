@@ -1,8 +1,9 @@
+use log::info;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 
 use lazy_static::lazy_static;
 
-use crate::{arch::x86::hlt_loop, println};
+use crate::arch::x86::hlt_loop;
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -26,7 +27,7 @@ pub fn init() {
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
-    println!("EXCEPTION: BREAKPOING\n{:#?}", stack_frame);
+    info!("EXCEPTION: BREAKPOING\n{:#?}", stack_frame);
 }
 
 extern "x86-interrupt" fn double_fault_handler(
@@ -42,9 +43,11 @@ extern "x86-interrupt" fn page_fault_handler(
 ) {
     use x86_64::registers::control::Cr2;
 
-    println!("EXCEPTION: PAGE FAULT");
-    println!("Accessed Address: {:?}", Cr2::read());
-    println!("Error Code: {:?}", error_code);
-    println!("{:#?}", stack_frame);
+    info!(
+        "EXCEPTION: PAGE FAULT\nAccessed Address: {:?}\nError Code: {:?}\n{:#?}",
+        Cr2::read(),
+        error_code,
+        stack_frame,
+    );
     hlt_loop();
 }

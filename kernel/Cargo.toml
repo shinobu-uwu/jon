@@ -11,9 +11,11 @@ x86_64 = "0.15.1"
 buddy_system_allocator = "0.11.0"
 uart_16550 = "0.3.1"
 spinning_top = "0.3.0"
+log = "0.4.22"
 
 [profile.dev]
 panic = "abort"
+debug = true
 
 [profile.release]
 panic = "abort"
