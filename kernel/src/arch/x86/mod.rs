@@ -1,6 +1,5 @@
-use core::arch::asm;
-
 use interrupt::PICS;
+use log::info;
 use x86_64::instructions::hlt;
 
 pub mod gdt;
@@ -14,7 +13,7 @@ pub fn init() {
     let mut pics = PICS.lock();
     unsafe { pics.initialize() };
     x86_64::instructions::interrupts::enable();
-    unsafe { asm!("sti") }
+    info!("Interrupts enabled")
 }
 
 pub fn hlt_loop() -> ! {
