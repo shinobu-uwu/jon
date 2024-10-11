@@ -3,7 +3,7 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, Pag
 
 use lazy_static::lazy_static;
 
-use crate::arch::x86::hlt_loop;
+use crate::arch::x86::{hlt_loop, interrupt::InterruptIndex};
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -18,6 +18,7 @@ lazy_static! {
 
         idt.page_fault.set_handler_fn(page_fault_handler);
 
+        idt[InterruptIndex::Timer.as_u8() + 1].set_handler_fn(timer_interrupt_handler);
         idt
     };
 }
@@ -50,4 +51,8 @@ extern "x86-interrupt" fn page_fault_handler(
         stack_frame,
     );
     hlt_loop();
+}
+
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    info!(".");
 }

@@ -8,19 +8,11 @@ mod output;
 
 use core::panic::PanicInfo;
 
-use alloc::boxed::Box;
-use arch::x86::{
-    hlt_loop,
-    memory::{active_level_4_table, translate_addr, BootInfoFrameAllocator},
-};
+use arch::x86::{hlt_loop, memory::BootInfoFrameAllocator};
 use bootloader_api::{config::Mapping, entry_point, BootInfo, BootloaderConfig};
-use log::{debug, error, info};
-use memory::allocator::HEAP_START;
-use x86_64::{
-    registers::debug,
-    structures::paging::{PageTable, Translate},
-    VirtAddr,
-};
+use log::error;
+use output::console::init_console;
+use x86_64::VirtAddr;
 
 use crate::output::logger;
 
@@ -37,17 +29,21 @@ entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     logger::init().expect("Failed to init logger");
+
+    if let Some(f) = boot_info.framebuffer.as_mut() {
+        init_console(f.info(), f.buffer_mut());
+    }
+
     #[cfg(target_arch = "x86_64")]
     arch::x86::init();
 
-    let offset = match boot_info.physical_memory_offset {
-        bootloader_api::info::Optional::Some(o) => o,
-        bootloader_api::info::Optional::None => panic!("Memory not mapped"),
-    };
+    let offset = boot_info.physical_memory_offset.into_option().unwrap();
     let phys_mem_offset = VirtAddr::new(offset);
     let mut mapper = unsafe { arch::x86::memory::init(phys_mem_offset) };
     let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_regions) };
     crate::memory::allocator::init_heap(&mut mapper, &mut frame_allocator).unwrap();
+
+    println!("Hello, world!");
 
     #[cfg(target_arch = "x86_64")]
     hlt_loop();

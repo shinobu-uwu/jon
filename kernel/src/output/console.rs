@@ -16,6 +16,17 @@ const BORDER_PADDING: usize = 1;
 
 static WRITER: Spinlock<Option<FrameBufferWriter>> = Spinlock::new(None);
 
+#[macro_export]
+macro_rules! tty_print {
+    ($($arg:tt)*) => ($crate::output::console::_print(format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! tty_println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::tty_print!("{}\n", format_args!($($arg)*)));
+}
+
 pub fn init_console(info: FrameBufferInfo, buffer: &'static mut [u8]) {
     *WRITER.lock() = Some(FrameBufferWriter::new(buffer, info));
 }

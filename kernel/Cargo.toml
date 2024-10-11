@@ -12,6 +12,8 @@ buddy_system_allocator = "0.11.0"
 uart_16550 = "0.3.1"
 spinning_top = "0.3.0"
 log = "0.4.22"
+acpi = "5.0.0"
+pic8259 = "0.11.0"
 
 [profile.dev]
 panic = "abort"
