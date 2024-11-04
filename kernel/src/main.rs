@@ -7,18 +7,13 @@ mod output;
 
 use core::arch::asm;
 
-use arch::x86::gdt::GDT;
-use arch::x86::idt::IDT;
 use limine::request::{
-    FramebufferRequest, MemoryMapRequest, RequestsEndMarker, RequestsStartMarker, RsdpRequest,
-    SmpRequest,
+    FramebufferRequest, MemoryMapRequest, RequestsEndMarker, RequestsStartMarker,
 };
 use limine::BaseRevision;
-use log::{debug, error};
+use log::error;
 use output::logger;
 use x86_64::instructions::interrupts::int3;
-use x86_64::structures::DescriptorTablePointer;
-use x86_64::VirtAddr;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -30,15 +25,7 @@ static BASE_REVISION: BaseRevision = BaseRevision::new();
 
 #[used]
 #[link_section = ".requests"]
-static SMP_REQUEST: SmpRequest = SmpRequest::new();
-
-#[used]
-#[link_section = ".requests"]
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
-
-#[used]
-#[link_section = ".requests"]
-static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
 #[used]
 #[link_section = ".requests"]
@@ -60,19 +47,6 @@ unsafe extern "C" fn kmain() -> ! {
     int3();
 
     hcf();
-}
-
-pub fn read_idt() -> DescriptorTablePointer {
-    let mut idt: DescriptorTablePointer = DescriptorTablePointer {
-        base: VirtAddr::new(0),
-        limit: 0,
-    };
-
-    unsafe {
-        asm!("sidt [{}]", in(reg) &mut idt);
-    }
-
-    idt
 }
 
 #[panic_handler]
