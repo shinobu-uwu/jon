@@ -57,8 +57,6 @@ unsafe extern "C" fn kmain() -> ! {
     assert!(BASE_REVISION.is_supported());
     logger::init().unwrap();
     arch::init();
-    debug!("{:#?}", GDT.0);
-    debug!("{:#?}", read_idt());
     int3();
 
     hcf();
