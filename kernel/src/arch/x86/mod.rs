@@ -1,5 +1,6 @@
 pub mod gdt;
 pub mod idt;
+pub mod mm;
 
 pub fn init() {
     gdt::init();

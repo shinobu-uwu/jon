@@ -3,6 +3,7 @@
 #![feature(abi_x86_interrupt)]
 
 mod arch;
+mod mm;
 mod output;
 
 use core::arch::asm;
@@ -12,6 +13,7 @@ use limine::request::{
 };
 use limine::BaseRevision;
 use log::error;
+use mm::address::PhysicalAddress;
 use output::logger;
 use x86_64::instructions::interrupts::int3;
 
@@ -39,12 +41,13 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[link_section = ".requests_end_marker"]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
+extern crate alloc;
+
 #[no_mangle]
 unsafe extern "C" fn kmain() -> ! {
     assert!(BASE_REVISION.is_supported());
     logger::init().unwrap();
     arch::init();
-    int3();
 
     hcf();
 }
