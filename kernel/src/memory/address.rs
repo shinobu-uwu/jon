@@ -1,10 +1,10 @@
-use super::PAGE_SIZE;
+use super::paging::PAGE_SIZE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PhysicalAddress(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct VirtualAddress(usize);
+pub struct VirtualAddress(usize);
 
 impl PhysicalAddress {
     pub const fn new(addr: usize) -> Self {
@@ -47,9 +47,5 @@ impl VirtualAddress {
 
     pub fn offset(&self, bytes: usize) -> Self {
         Self(self.0 + bytes)
-    }
-
-    pub fn page_index(&self) -> usize {
-        self.0 / PAGE_SIZE
     }
 }

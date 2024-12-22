@@ -1,9 +1,10 @@
 pub mod gdt;
 pub mod idt;
-pub mod mm;
+pub mod memory;
 
-pub fn init() {
+pub(super) fn init() {
+    x86_64::instructions::interrupts::enable();
     gdt::init();
     idt::init();
-    x86_64::instructions::interrupts::enable();
+    memory::init();
 }

@@ -3,19 +3,16 @@
 #![feature(abi_x86_interrupt)]
 
 mod arch;
-mod mm;
+mod memory;
 mod output;
 
+use alloc::boxed::Box;
 use core::arch::asm;
 
-use limine::request::{
-    FramebufferRequest, MemoryMapRequest, RequestsEndMarker, RequestsStartMarker,
-};
+use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
-use log::error;
-use mm::address::PhysicalAddress;
+use log::{debug, error, info};
 use output::logger;
-use x86_64::instructions::interrupts::int3;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -28,10 +25,6 @@ static BASE_REVISION: BaseRevision = BaseRevision::new();
 #[used]
 #[link_section = ".requests"]
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
-
-#[used]
-#[link_section = ".requests"]
-static MEMORY_MAP_REQUEST: MemoryMapRequest = MemoryMapRequest::new();
 
 /// Define the stand and end markers for Limine requests.
 #[used]
@@ -47,7 +40,10 @@ extern crate alloc;
 unsafe extern "C" fn kmain() -> ! {
     assert!(BASE_REVISION.is_supported());
     logger::init().unwrap();
+    info!("Initialized logger");
     arch::init();
+    let a = Box::new(1);
+    debug!("{a}");
 
     hcf();
 }

@@ -1,13 +1,10 @@
 use core::fmt::Display;
 
-use address::PhysicalAddress;
-use alloc::vec::Vec;
-
-pub mod address;
-
-pub const PAGE_SIZE: usize = 4096;
+use super::address::PhysicalAddress;
 
 pub trait PhysicalMemoryManager {
+    fn init(&mut self) -> Result<(), ()>;
+
     /// Allocate a single physical frame
     fn allocate_frame(&mut self) -> Result<PhysicalAddress, FrameAllocationError>;
 
@@ -24,7 +21,7 @@ pub trait PhysicalMemoryManager {
     fn available_memory(&self) -> usize;
 
     /// Allocate multiple contiguous frames
-    fn allocate_frames(&mut self, count: usize) -> Option<Vec<PhysicalAddress>>;
+    fn allocate_frames(&mut self, count: usize) -> Option<&'static [PhysicalAddress]>;
 
     /// Reserve a specific frame range (for kernel, hardware, etc.)
     fn reserve_frame_range(&mut self, start: PhysicalAddress, end: PhysicalAddress);
@@ -33,7 +30,6 @@ pub trait PhysicalMemoryManager {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FrameAllocationError {
     OutOfMemory,
-    Reserved,
 }
 
 impl Display for FrameAllocationError {
@@ -42,7 +38,6 @@ impl Display for FrameAllocationError {
 
         let message = match self {
             OutOfMemory => "out of memory",
-            Reserved => "reserved",
         };
 
         write!(f, "{message}")
@@ -50,5 +45,3 @@ impl Display for FrameAllocationError {
 }
 
 impl core::error::Error for FrameAllocationError {}
-
-pub trait VirtualMemoryManager {}
