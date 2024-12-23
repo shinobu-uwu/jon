@@ -3,6 +3,10 @@ use core::usize;
 use bitmap_allocator::{BitAlloc, BitAlloc16M};
 use limine::memory_map::EntryType;
 use log::debug;
+use x86_64::{
+    structures::paging::{FrameAllocator, PhysFrame, Size4KiB},
+    PhysAddr,
+};
 
 use crate::memory::{
     address::PhysicalAddress,
@@ -21,6 +25,17 @@ impl X86PhysicalMemoryManager {
         Self {
             bitmap: BitAlloc16M::default(),
             total_frames: 0,
+        }
+    }
+}
+
+unsafe impl FrameAllocator<Size4KiB> for X86PhysicalMemoryManager {
+    fn allocate_frame(&mut self) -> Option<x86_64::structures::paging::PhysFrame<Size4KiB>> {
+        match PhysicalMemoryManager::allocate_frame(self) {
+            Ok(f) => Some(PhysFrame::containing_address(PhysAddr::new(
+                f.as_usize() as u64
+            ))),
+            Err(_) => None,
         }
     }
 }

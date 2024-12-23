@@ -6,14 +6,14 @@ pub const PAGE_SIZE: usize = 4096;
 pub trait VirtualMemoryManager {
     /// Map a page of virual address `addr` to the frame of physics address `target`
     /// Return the page table entry of the mapped virual address
-    fn map(&mut self, addr: VirtualAddress, target: PhysicalAddress) -> &mut impl Page;
+    fn map(&mut self, addr: VirtualAddress, target: PhysicalAddress);
 
     /// Unmap a page of virual address `addr`
     fn unmap(&mut self, addr: VirtualAddress);
 
     /// Get the page table entry of a page of virual address `addr`
     /// If its page do not exist, return `None`
-    fn get_entry(&mut self, addr: VirtualAddress) -> Option<&mut impl Page>;
+    fn get_entry(&mut self, addr: VirtualAddress) -> Option<&mut impl Entry>;
 
     /// Get a mutable reference of the content of a page of virtual address `addr`
     fn get_page_slice_mut<'a>(&mut self, addr: VirtualAddress) -> &'a mut [u8];
@@ -36,26 +36,23 @@ bitflags! {
     }
 }
 
-pub trait Page {
-    /// Get the physical address this page maps to (if present)
-    fn physical_address(&self) -> Option<PhysicalAddress>;
+pub trait Entry {
+    /// A bit set by hardware when the page is accessed
+    fn accessed(&self) -> bool;
+    /// A bit set by hardware when the page is written
+    fn dirty(&self) -> bool;
+    /// Will PageFault when try to write page where writable=0
+    fn writable(&self) -> bool;
+    /// Will PageFault when try to access page where present=0
+    fn present(&self) -> bool;
 
-    /// Set the physical address this page maps to
-    /// This is architecture-agnostic as it works with our PhysicalAddress type
-    fn set_address(&mut self, addr: PhysicalAddress);
+    fn clear_accessed(&mut self);
+    fn clear_dirty(&mut self);
+    fn set_writable(&mut self, value: bool);
+    fn set_present(&mut self, value: bool);
 
-    /// Get the page flags
-    /// Returns our architecture-agnostic PageFlags
-    fn flags(&self) -> PageFlags;
-
-    /// Set the page flags
-    /// Takes our architecture-agnostic PageFlags and translates them
-    /// to architecture-specific bits internally
-    fn set_flags(&mut self, flags: PageFlags);
-
-    /// Is this entry pointing to a valid mapping?
-    fn is_present(&self) -> bool;
-
-    /// Clear this entry
-    fn clear(&mut self);
+    /// The target physics address in the entry
+    /// Can be used for other purpose if present=0
+    fn target(&self) -> PhysicalAddress;
+    fn set_target(&mut self, target: PhysicalAddress);
 }

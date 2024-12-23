@@ -9,7 +9,7 @@ mod output;
 use alloc::boxed::Box;
 use core::arch::asm;
 
-use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker};
+use limine::request::{FramebufferRequest, HhdmRequest, RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
 use log::{debug, error, info};
 use output::logger;
@@ -25,6 +25,10 @@ static BASE_REVISION: BaseRevision = BaseRevision::new();
 #[used]
 #[link_section = ".requests"]
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
+
+#[used]
+#[link_section = ".requests"]
+static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 
 /// Define the stand and end markers for Limine requests.
 #[used]

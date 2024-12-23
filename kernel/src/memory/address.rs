@@ -15,6 +15,10 @@ impl PhysicalAddress {
         self.0
     }
 
+    pub const fn as_u64(&self) -> u64 {
+        self.0 as u64
+    }
+
     pub fn page_align(&self) -> Self {
         Self(self.0 & !(PAGE_SIZE - 1))
     }
@@ -35,6 +39,10 @@ impl VirtualAddress {
 
     pub const fn as_usize(&self) -> usize {
         self.0
+    }
+
+    pub const fn as_u64(&self) -> u64 {
+        self.0 as u64
     }
 
     pub fn page_align(&self) -> Self {
