@@ -4,7 +4,7 @@ use super::PAGE_SIZE;
 pub struct PhysicalAddress(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct VirtualAddress(usize);
+pub struct VirtualAddress(usize);
 
 impl PhysicalAddress {
     pub const fn new(addr: usize) -> Self {
@@ -13,6 +13,10 @@ impl PhysicalAddress {
 
     pub const fn as_usize(&self) -> usize {
         self.0
+    }
+
+    pub const fn as_u64(&self) -> u64 {
+        self.0 as u64
     }
 
     pub fn page_align(&self) -> Self {
@@ -35,6 +39,10 @@ impl VirtualAddress {
 
     pub const fn as_usize(&self) -> usize {
         self.0
+    }
+
+    pub const fn as_u64(&self) -> u64 {
+        self.0 as u64
     }
 
     pub fn page_align(&self) -> Self {
