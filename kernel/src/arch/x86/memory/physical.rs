@@ -1,3 +1,6 @@
+use core::slice::SlicePattern;
+
+use alloc::vec;
 use bitmap_allocator::BitAlloc;
 use limine::memory_map::EntryType;
 use log::debug;
@@ -11,6 +14,8 @@ use crate::memory::{
     physical::{FrameAllocationError, PhysicalMemoryManager, FRAME_ALLOCATOR},
     MEMORY_MAP, PAGE_SIZE,
 };
+
+use super::allocator;
 
 #[derive(Debug)]
 pub struct X86PhysicalMemoryManager {
@@ -61,19 +66,15 @@ impl PhysicalMemoryManager for X86PhysicalMemoryManager {
         allocator.dealloc(frame.as_usize() / PAGE_SIZE);
     }
 
-    fn is_frame_free(&self, _frame: PhysicalAddress) -> bool {
-        todo!()
+    fn is_frame_free(&self, frame: PhysicalAddress) -> bool {
+        FRAME_ALLOCATOR.lock().test(frame.as_usize())
     }
 
     fn total_memory(&self) -> usize {
-        todo!()
-    }
-
-    fn available_memory(&self) -> usize {
         self.total_frames * PAGE_SIZE
     }
 
-    fn allocate_frames(&mut self, _count: usize) -> Option<&[PhysicalAddress]> {
+    fn available_memory(&self) -> usize {
         todo!()
     }
 

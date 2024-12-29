@@ -1,10 +1,7 @@
 use core::{error::Error, fmt::Display};
 
 use bitmap_allocator::{BitAlloc, BitAlloc256M};
-use lazy_static::lazy_static;
 use spinning_top::Spinlock;
-
-use crate::arch::x86::memory::physical::X86PhysicalMemoryManager;
 
 use super::address::PhysicalAddress;
 
@@ -25,9 +22,6 @@ pub trait PhysicalMemoryManager {
 
     /// Get available physical memory
     fn available_memory(&self) -> usize;
-
-    /// Allocate multiple contiguous frames
-    fn allocate_frames(&mut self, count: usize) -> Option<&[PhysicalAddress]>;
 
     /// Reserve a specific frame range (for kernel, hardware, etc.)
     fn reserve_frame_range(&mut self, start: PhysicalAddress, end: PhysicalAddress);

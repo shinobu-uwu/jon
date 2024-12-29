@@ -2,8 +2,8 @@ use log::debug;
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
-        mapper::MapToError, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame,
-        Size4KiB,
+        mapper::{MapToError, UnmapError as X86UnmapError},
+        Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB,
     },
     PhysAddr, VirtAddr,
 };
@@ -65,6 +65,16 @@ impl VirtualMemoryManager for X86VirtualMemoryManager {
     }
 
     fn unmap(&mut self, virtual_addr: VirtualAddress) -> Result<(), UnmapError> {
-        todo!()
+        let page = Page::<Size4KiB>::containing_address(VirtAddr::new(virtual_addr.as_u64()));
+        let result = self.page_table.unmap(page);
+        let (_, flush) = result.map_err(|e| match e {
+            X86UnmapError::ParentEntryHugePage => UnmapError::InvalidAddress,
+            X86UnmapError::PageNotMapped => UnmapError::NotMapped,
+            X86UnmapError::InvalidFrameAddress(_) => UnmapError::InvalidAddress,
+        })?;
+
+        flush.flush();
+
+        Ok(())
     }
 }
