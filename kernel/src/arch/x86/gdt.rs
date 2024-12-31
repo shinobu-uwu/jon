@@ -1,4 +1,5 @@
 use core::ptr::addr_of;
+use core::usize;
 
 use lazy_static::lazy_static;
 use log::debug;
@@ -18,9 +19,9 @@ lazy_static! {
             static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
             let stack_start = VirtAddr::from_ptr(addr_of!(STACK));
-            let stack_end = stack_start + STACK_SIZE as u64;
-            stack_end
+            stack_start + STACK_SIZE as u64
         };
+
         tss
     };
     pub static ref GDT: (GlobalDescriptorTable, Selectors) = {

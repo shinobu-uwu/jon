@@ -5,14 +5,17 @@
 mod arch;
 mod memory;
 mod output;
+mod sched;
 
 use core::arch::asm;
 
-use alloc::boxed::Box;
-use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker};
+use alloc::vec::Vec;
+use limine::request::{RequestsEndMarker, RequestsStartMarker, RsdpRequest, SmpRequest};
+use limine::smp::GotoAddress;
 use limine::BaseRevision;
-use log::{error, info};
+use log::{debug, error};
 use output::logger;
+use output::tty::WRITER;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -21,10 +24,6 @@ use output::logger;
 // The .requests section allows limine to find the requests faster and more safely.
 #[link_section = ".requests"]
 static BASE_REVISION: BaseRevision = BaseRevision::new();
-
-#[used]
-#[link_section = ".requests"]
-static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 
 /// Define the stand and end markers for Limine requests.
 #[used]
@@ -41,9 +40,6 @@ unsafe extern "C" fn kmain() -> ! {
     assert!(BASE_REVISION.is_supported());
     logger::init().unwrap();
     arch::init();
-
-    let a = Box::new(42);
-    info!("Hello, {a} from the heap");
 
     hcf();
 }

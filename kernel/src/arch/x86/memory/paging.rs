@@ -10,7 +10,7 @@ use x86_64::{
 
 use crate::memory::{
     address::{PhysicalAddress, VirtualAddress},
-    paging::{MapError, UnmapError, VirtualMemoryManager},
+    paging::{MapError, PageFlags, UnmapError, VirtualMemoryManager},
     MEMORY_OFFSET,
 };
 
@@ -40,18 +40,15 @@ impl VirtualMemoryManager for X86VirtualMemoryManager {
         &mut self,
         virtual_addr: VirtualAddress,
         physical_addr: PhysicalAddress,
+        flags: PageFlags,
     ) -> Result<(), MapError> {
         let page = Page::<Size4KiB>::containing_address(VirtAddr::new(virtual_addr.as_u64()));
         let frame = PhysFrame::containing_address(PhysAddr::new(physical_addr.as_u64()));
         let mut pmm = PMM.lock();
 
         let result = unsafe {
-            self.page_table.map_to(
-                page,
-                frame,
-                PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                &mut *pmm,
-            )
+            self.page_table
+                .map_to(page, frame, PageTableFlags::from(flags), &mut *pmm)
         };
         let mapper_flush = result.map_err(|e| match e {
             MapToError::FrameAllocationFailed => MapError::NoPhysicalMemory,
@@ -76,5 +73,46 @@ impl VirtualMemoryManager for X86VirtualMemoryManager {
         flush.flush();
 
         Ok(())
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+impl From<PageFlags> for PageTableFlags {
+    fn from(flags: PageFlags) -> Self {
+        use x86_64::structures::paging::PageTableFlags;
+        let mut x86_flags = PageTableFlags::empty();
+
+        if flags.contains(PageFlags::PRESENT) {
+            x86_flags |= PageTableFlags::PRESENT;
+        }
+        if flags.contains(PageFlags::WRITABLE) {
+            x86_flags |= PageTableFlags::WRITABLE;
+        }
+        if flags.contains(PageFlags::USER) {
+            x86_flags |= PageTableFlags::USER_ACCESSIBLE;
+        }
+        if flags.contains(PageFlags::WRITE_THROUGH) {
+            x86_flags |= PageTableFlags::WRITE_THROUGH;
+        }
+        if flags.contains(PageFlags::NO_CACHE) {
+            x86_flags |= PageTableFlags::NO_CACHE;
+        }
+        if flags.contains(PageFlags::ACCESSED) {
+            x86_flags |= PageTableFlags::ACCESSED;
+        }
+        if flags.contains(PageFlags::DIRTY) {
+            x86_flags |= PageTableFlags::DIRTY;
+        }
+        if flags.contains(PageFlags::HUGE_PAGE) {
+            x86_flags |= PageTableFlags::HUGE_PAGE;
+        }
+        if flags.contains(PageFlags::GLOBAL) {
+            x86_flags |= PageTableFlags::GLOBAL;
+        }
+        if flags.contains(PageFlags::NO_EXECUTE) {
+            x86_flags |= PageTableFlags::NO_EXECUTE;
+        }
+
+        x86_flags
     }
 }

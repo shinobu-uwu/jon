@@ -3,17 +3,20 @@ use core::{
     ptr,
 };
 use font_constants::BACKUP_CHAR;
-use limine::{framebuffer::Framebuffer, response::FramebufferResponse};
+use limine::{framebuffer::Framebuffer, request::FramebufferRequest};
 use noto_sans_mono_bitmap::{
     get_raster, get_raster_width, FontWeight, RasterHeight, RasterizedChar,
 };
 use spinning_top::Spinlock;
 
-const LINE_SPACING: usize = 2;
-const LETTER_SPACING: usize = 0;
+const LINE_SPACING: usize = 4;
+const LETTER_SPACING: usize = 2;
+const BORDER_PADDING: usize = 4;
 
-const BORDER_PADDING: usize = 1;
-static WRITER: Spinlock<Option<FrameBufferWriter>> = Spinlock::new(None);
+#[used]
+#[link_section = ".requests"]
+static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
+pub static WRITER: Spinlock<Option<FrameBufferWriter>> = Spinlock::new(None);
 
 #[macro_export]
 macro_rules! tty_print {
@@ -26,54 +29,23 @@ macro_rules! tty_println {
     ($($arg:tt)*) => ($crate::tty_print!("{}\n", format_args!($($arg)*)));
 }
 
-// FrameBufferInfo equivalent for Limine
 pub struct FrameBufferInfo {
     pub width: usize,
     pub height: usize,
     pub stride: usize,
     pub bytes_per_pixel: usize,
-    pub pixel_format: PixelFormat,
+    pixel_format: PixelFormat,
 }
 
+#[derive(Debug, Clone, Copy)]
 enum PixelFormat {
     Rgb,
     Bgr,
     U8,
 }
 
-fn framebuffer_info_from_limine(framebuffer: &Framebuffer) -> FrameBufferInfo {
-    FrameBufferInfo {
-        width: framebuffer.width() as usize,
-        height: framebuffer.height() as usize,
-        stride: framebuffer.pitch() as usize,
-        bytes_per_pixel: framebuffer.bpp() as usize / 8,
-        pixel_format: PixelFormat::Rgb,
-    }
-}
-
-pub fn init_tty(response: &FramebufferResponse) {
-    if let Some(framebuffer) = response.framebuffers().next() {
-        let info = framebuffer_info_from_limine(&framebuffer);
-        *WRITER.lock() = Some(FrameBufferWriter::new(
-            unsafe {
-                core::slice::from_raw_parts_mut(
-                    framebuffer.addr() as *mut u8,
-                    framebuffer.height() as usize * framebuffer.pitch() as usize,
-                )
-            },
-            info,
-        ));
-    }
-}
-
-#[doc(hidden)]
-pub fn _print(args: fmt::Arguments) {
-    WRITER.lock().as_mut().unwrap().write_fmt(args).unwrap();
-}
-
 mod font_constants {
     use super::*;
-
     pub const CHAR_RASTER_HEIGHT: RasterHeight = RasterHeight::Size16;
     pub const CHAR_RASTER_WIDTH: usize = get_raster_width(FontWeight::Regular, CHAR_RASTER_HEIGHT);
     pub const BACKUP_CHAR: char = '�';
@@ -102,7 +74,16 @@ impl FrameBufferWriter {
     pub fn clear(&mut self) {
         self.x_pos = BORDER_PADDING;
         self.y_pos = BORDER_PADDING;
-        self.framebuffer.fill(0);
+        self.framebuffer.fill(255);
+    }
+
+    fn newline(&mut self) {
+        self.y_pos += font_constants::CHAR_RASTER_HEIGHT.val() + LINE_SPACING;
+        self.carriage_return()
+    }
+
+    fn carriage_return(&mut self) {
+        self.x_pos = BORDER_PADDING;
     }
 
     fn write_char(&mut self, c: char) {
@@ -114,23 +95,16 @@ impl FrameBufferWriter {
                 if new_xpos >= self.info.width {
                     self.newline();
                 }
+
                 let new_ypos =
                     self.y_pos + font_constants::CHAR_RASTER_HEIGHT.val() + BORDER_PADDING;
                 if new_ypos >= self.info.height {
                     self.clear();
                 }
+
                 self.write_rendered_char(get_char_raster(c));
             }
         }
-    }
-
-    fn newline(&mut self) {
-        self.y_pos += font_constants::CHAR_RASTER_HEIGHT.val() + LINE_SPACING;
-        self.carriage_return()
-    }
-
-    fn carriage_return(&mut self) {
-        self.x_pos = BORDER_PADDING;
     }
 
     fn write_rendered_char(&mut self, rendered_char: RasterizedChar) {
@@ -145,10 +119,11 @@ impl FrameBufferWriter {
     fn write_pixel(&mut self, x: usize, y: usize, intensity: u8) {
         let pixel_offset = y * self.info.stride + x;
         let color = match self.info.pixel_format {
-            PixelFormat::Rgb => [intensity, intensity, intensity / 2, 0],
-            PixelFormat::Bgr => [intensity / 2, intensity, intensity, 0],
-            PixelFormat::U8 => [if intensity > 200 { 0xf } else { 0 }, 0, 0, 0],
+            PixelFormat::Rgb => [intensity, intensity, intensity, 0], // White text (R=G=B)
+            PixelFormat::Bgr => [intensity, intensity, intensity, 0], // White text (B=G=R)
+            PixelFormat::U8 => [if intensity > 200 { 0xff } else { 0 }, 0, 0, 0], // Binary black/white
         };
+
         let bytes_per_pixel = self.info.bytes_per_pixel;
         let byte_offset = pixel_offset * bytes_per_pixel;
         self.framebuffer[byte_offset..(byte_offset + bytes_per_pixel)]
@@ -164,6 +139,37 @@ impl fmt::Write for FrameBufferWriter {
         }
         Ok(())
     }
+}
+
+fn framebuffer_info_from_limine(framebuffer: &Framebuffer) -> FrameBufferInfo {
+    FrameBufferInfo {
+        width: framebuffer.width() as usize,
+        height: framebuffer.height() as usize,
+        stride: framebuffer.pitch() as usize,
+        bytes_per_pixel: framebuffer.bpp() as usize / 8,
+        pixel_format: PixelFormat::Rgb,
+    }
+}
+
+pub fn init_tty() {
+    let response = FRAMEBUFFER_REQUEST.get_response().unwrap();
+    if let Some(framebuffer) = response.framebuffers().next() {
+        let info = framebuffer_info_from_limine(&framebuffer);
+        *WRITER.lock() = Some(FrameBufferWriter::new(
+            unsafe {
+                core::slice::from_raw_parts_mut(
+                    framebuffer.addr() as *mut u8,
+                    framebuffer.height() as usize * framebuffer.pitch() as usize,
+                )
+            },
+            info,
+        ));
+    }
+}
+
+#[doc(hidden)]
+pub fn _print(args: fmt::Arguments) {
+    WRITER.lock().as_mut().unwrap().write_fmt(args).unwrap();
 }
 
 fn get_char_raster(c: char) -> RasterizedChar {

@@ -6,7 +6,9 @@ use x86_64::{
 };
 
 use crate::memory::{
-    address::VirtualAddress, paging::VirtualMemoryManager, physical::PhysicalMemoryManager,
+    address::VirtualAddress,
+    paging::{PageFlags, VirtualMemoryManager},
+    physical::PhysicalMemoryManager,
 };
 
 use super::{PMM, VMM};
@@ -20,13 +22,9 @@ pub static GLOBAL_ALLOC: LockedHeap<32> = LockedHeap::empty();
 pub fn init() {
     let page_range = {
         let heap_start = VirtAddr::new(HEAP_START as u64);
-        debug!("heap_start: {:#?}", heap_start);
         let heap_end = heap_start + HEAP_SIZE as u64 - 1u64;
-        debug!("heap_end: {:#?}", heap_end);
         let heap_start_page = Page::<Size4KiB>::containing_address(heap_start);
-        debug!("heap_start_page: {:#?}", heap_start_page);
         let heap_end_page = Page::containing_address(heap_end);
-        debug!("heap_end_page: {:#?}", heap_end_page);
         Page::range_inclusive(heap_start_page, heap_end_page)
     };
 
@@ -36,6 +34,7 @@ pub fn init() {
             .map(
                 VirtualAddress::new(page.start_address().as_u64() as usize),
                 frame,
+                PageFlags::WRITABLE | PageFlags::PRESENT,
             )
             .unwrap();
     }

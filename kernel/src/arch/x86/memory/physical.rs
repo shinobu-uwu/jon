@@ -1,6 +1,3 @@
-use core::slice::SlicePattern;
-
-use alloc::vec;
 use bitmap_allocator::BitAlloc;
 use limine::memory_map::EntryType;
 use log::debug;
@@ -14,8 +11,6 @@ use crate::memory::{
     physical::{FrameAllocationError, PhysicalMemoryManager, FRAME_ALLOCATOR},
     MEMORY_MAP, PAGE_SIZE,
 };
-
-use super::allocator;
 
 #[derive(Debug)]
 pub struct X86PhysicalMemoryManager {
