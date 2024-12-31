@@ -1,6 +1,6 @@
 use core::{fmt::Display, usize};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pid(usize);
 
 impl Pid {

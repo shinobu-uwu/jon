@@ -9,13 +9,11 @@ mod sched;
 
 use core::arch::asm;
 
-use alloc::vec::Vec;
-use limine::request::{RequestsEndMarker, RequestsStartMarker, RsdpRequest, SmpRequest};
-use limine::smp::GotoAddress;
+use arch::x86::interrupts::LAPIC;
+use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
-use log::{debug, error};
+use log::error;
 use output::logger;
-use output::tty::WRITER;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -47,6 +45,9 @@ unsafe extern "C" fn kmain() -> ! {
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     error!("{}", info);
+    unsafe {
+        LAPIC.lock().as_mut().unwrap().disable();
+    }
     hcf();
 }
 
