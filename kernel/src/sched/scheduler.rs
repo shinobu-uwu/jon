@@ -1,44 +1,56 @@
 use alloc::vec::Vec;
-use log::debug;
 
 use crate::sched::task::Task;
 
-use super::pid::Pid;
-
+#[derive(Debug)]
 pub struct Scheduler {
-    current_index: usize,
     tasks: Vec<Task>,
+    current: Option<usize>,
+    ticks: u64,
 }
 
 impl Scheduler {
     pub const fn new() -> Self {
         Self {
-            current_index: 0,
             tasks: Vec::new(),
+            current: None,
+            ticks: 0,
         }
-    }
-
-    pub fn spawn(&mut self, task: Task) {
-        self.tasks.push(task);
-    }
-
-    pub fn kill(&mut self, pid: Pid) {
-        if let Some(index) = self.tasks.iter().position(|task| task.pid == pid) {
-            let task = self.tasks.remove(index);
-            debug!("Killed task with {}", task.pid);
-        }
-
-        debug!("Task with {} not found", pid);
     }
 
     pub fn tick(&mut self) {
+        self.ticks += 1;
+
+        // Switch tasks every N ticks (for example, every 10 ticks)
+        if self.ticks % 10 == 0 {
+            self.switch_next_task();
+        }
+    }
+
+    pub fn add_task(&mut self, task: Task) {
+        self.tasks.push(task);
+    }
+
+    pub fn switch_next_task(&mut self) {
         if self.tasks.is_empty() {
-            debug!("No tasks to schedule");
             return;
         }
 
-        let task = &self.tasks[self.current_index];
-        debug!("Processing task with {}", task.pid);
-        self.current_index = (self.current_index + 1) % self.tasks.len();
+        if let Some(current) = self.current {
+            unsafe {
+                self.tasks[current].context.save();
+            }
+        }
+
+        let next = match self.current {
+            Some(current) => (current + 1) % self.tasks.len(),
+            None => 0,
+        };
+
+        unsafe {
+            self.tasks[next].context.restore();
+        }
+
+        self.current = Some(next);
     }
 }

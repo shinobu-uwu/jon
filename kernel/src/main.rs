@@ -12,8 +12,10 @@ use core::arch::asm;
 use arch::x86::interrupts::LAPIC;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
-use log::error;
+use log::{debug, error};
 use output::logger;
+use sched::task::Task;
+use sched::SCHEDULER;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -38,6 +40,26 @@ unsafe extern "C" fn kmain() -> ! {
     assert!(BASE_REVISION.is_supported());
     logger::init().unwrap();
     arch::init();
+    let mut scheduler = SCHEDULER.lock();
+    let task1 = Task::new(None, || {
+        debug!("Task 1 first time");
+        debug!("Task 1 second time");
+        debug!("Task 1 third");
+    });
+    let task2 = Task::new(None, || {
+        debug!("Task 2 first time");
+        debug!("Task 2 second time");
+        debug!("Task 2 third");
+    });
+    let task3 = Task::new(None, || {
+        debug!("Task 3 first time");
+        debug!("Task 3 second time");
+        debug!("Task 3 third");
+    });
+    scheduler.add_task(task1);
+    scheduler.add_task(task2);
+    scheduler.add_task(task3);
+    drop(scheduler);
 
     hcf();
 }
@@ -45,6 +67,7 @@ unsafe extern "C" fn kmain() -> ! {
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     error!("{}", info);
+    // TODO Move this to x86 specific panic_impl
     unsafe {
         LAPIC.lock().as_mut().unwrap().disable();
     }
