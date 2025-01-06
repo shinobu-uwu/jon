@@ -11,6 +11,10 @@ pub trait PhysicalMemoryManager {
     /// Allocate a single physical frame
     fn allocate(&mut self) -> Result<PhysicalAddress, FrameAllocationError>;
 
+    /// Alocate a block of contiguous frames returning the address of the start of the block
+    fn allocate_contiguous(&mut self, size: usize)
+        -> Result<PhysicalAddress, FrameAllocationError>;
+
     /// Free a previously allocated physical frame
     fn free(&mut self, frame: PhysicalAddress);
 

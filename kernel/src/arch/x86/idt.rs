@@ -1,6 +1,4 @@
 use crate::arch::x86::interrupts::{ERROR_VECTOR, LAPIC, SPURIOUS_VECTOR, TIMER_VECTOR};
-use crate::sched::SCHEDULER;
-use core::arch::asm;
 use lazy_static::lazy_static;
 use log::{debug, info};
 use spinning_top::Spinlock;
@@ -108,45 +106,13 @@ extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) -> ! {
-    let last_exception = LAST_EXCEPTION.lock().take();
-
-    let mut stack_trace = [0u64; 16];
-    let mut depth = 0;
-
-    unsafe {
-        let mut rbp: u64;
-        asm!("mov {}, rbp", out(reg) rbp);
-
-        let mut frame_ptr = rbp as *const u64;
-
-        while !frame_ptr.is_null()
-            && depth < stack_trace.len()
-            && (frame_ptr as u64) >= 0xffff800000000000
-        {
-            let return_addr = *frame_ptr.offset(1);
-            if return_addr >= 0xffff800000000000 {
-                stack_trace[depth] = return_addr;
-                depth += 1;
-            }
-
-            let next_rbp = *frame_ptr;
-            if next_rbp <= rbp {
-                break;
-            }
-            frame_ptr = next_rbp as *const u64;
-        }
-    }
-
     panic!(
         "EXCEPTION: DOUBLE FAULT\n\
-        Previous Exception: {:#?}\n\
         Stack Frame: {:#?}\n\
         Error Code: {}\n\
-        Stack Trace: {:#x?}",
-        last_exception,
         stack_frame,
-        error_code,
-        &stack_trace[..depth]
+        error_code,",
+        stack_frame, error_code
     );
 }
 
@@ -245,7 +211,6 @@ extern "x86-interrupt" fn cp_protection_handler(stack_frame: InterruptStackFrame
 
 // LAPIC handlers
 extern "x86-interrupt" fn timer_interrupt_handler(_frame: InterruptStackFrame) {
-    SCHEDULER.lock().tick();
     unsafe {
         LAPIC.lock().as_mut().unwrap().end_of_interrupt();
     }

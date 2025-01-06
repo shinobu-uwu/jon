@@ -1,20 +1,18 @@
-use log::debug;
-use x86_64::{
-    registers::control::Cr3,
-    structures::paging::{
-        mapper::{MapToError, UnmapError as X86UnmapError},
-        Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB,
-    },
-    PhysAddr, VirtAddr,
-};
-
+use super::PMM;
 use crate::memory::{
     address::{PhysicalAddress, VirtualAddress},
     paging::{MapError, PageFlags, UnmapError, VirtualMemoryManager},
-    MEMORY_OFFSET,
+    MEMORY_OFFSET, PAGE_SIZE,
 };
-
-use super::PMM;
+use log::{debug, warn};
+use x86_64::{
+    registers::control::Cr3,
+    structures::paging::{
+        mapper::{MapToError, TranslateResult, UnmapError as X86UnmapError},
+        Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB, Translate,
+    },
+    PhysAddr, VirtAddr,
+};
 
 #[derive(Debug)]
 pub struct X86VirtualMemoryManager {
@@ -31,7 +29,69 @@ impl X86VirtualMemoryManager {
         let page_table =
             unsafe { OffsetPageTable::new(&mut *page_table_ptr, VirtAddr::new(memory_offset)) };
 
+        debug!(
+            "Created VMM with page table at physical address {:#x}",
+            phys.as_u64()
+        );
         Self { page_table }
+    }
+
+    /// Maps a range of virtual addresses to physical addresses
+    pub fn map_range(
+        &mut self,
+        virt_start: VirtualAddress,
+        phys_start: PhysicalAddress,
+        size: usize,
+        flags: PageFlags,
+    ) -> Result<(), MapError> {
+        let pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+        for i in 0..pages {
+            let virt_addr = VirtualAddress::new(virt_start.as_usize() + i * PAGE_SIZE);
+            let phys_addr = PhysicalAddress::new(phys_start.as_usize() + i * PAGE_SIZE);
+
+            self.map(virt_addr, phys_addr, flags)?;
+        }
+
+        Ok(())
+    }
+
+    /// Checks if a virtual address is mapped
+    pub fn is_mapped(&self, virtual_addr: VirtualAddress) -> bool {
+        let page = Page::<Size4KiB>::containing_address(VirtAddr::new(virtual_addr.as_u64()));
+        self.page_table.translate_page(page).is_ok()
+    }
+
+    pub fn get_physical_address(&self, virtual_addr: VirtualAddress) -> Option<PhysicalAddress> {
+        let virt_addr = VirtAddr::new(virtual_addr.as_u64());
+        match self.page_table.translate(virt_addr) {
+            TranslateResult::Mapped {
+                frame,
+                offset,
+                flags,
+            } => {
+                let phys_addr = frame.start_address().as_u64() + offset;
+                debug!(
+                    "Translated {:#x} to {:#x} (flags: {:?})",
+                    virtual_addr.as_u64(),
+                    phys_addr,
+                    flags
+                );
+                Some(PhysicalAddress::new(phys_addr as usize))
+            }
+            TranslateResult::NotMapped => {
+                debug!("Address {:#x} is not mapped", virtual_addr.as_u64());
+                None
+            }
+            TranslateResult::InvalidFrameAddress(addr) => {
+                debug!(
+                    "Address {:#x} translates to invalid frame address {:#x}",
+                    virtual_addr.as_u64(),
+                    addr
+                );
+                None
+            }
+        }
     }
 }
 
@@ -42,37 +102,73 @@ impl VirtualMemoryManager for X86VirtualMemoryManager {
         physical_addr: PhysicalAddress,
         flags: PageFlags,
     ) -> Result<(), MapError> {
+        debug!("Mapping {:#x?} -> {:#x?}", physical_addr, virtual_addr);
+
+        if !virtual_addr.is_page_aligned() {
+            debug!("Virtual address is not page aligned");
+            return Err(MapError::InvalidAddress);
+        }
+
+        if !physical_addr.is_page_aligned() {
+            debug!("Physical address is not page aligned");
+            return Err(MapError::InvalidAddress);
+        }
+
         let page = Page::<Size4KiB>::containing_address(VirtAddr::new(virtual_addr.as_u64()));
         let frame = PhysFrame::containing_address(PhysAddr::new(physical_addr.as_u64()));
         let mut pmm = PMM.lock();
 
-        let result = unsafe {
-            self.page_table
-                .map_to(page, frame, PageTableFlags::from(flags), &mut *pmm)
-        };
-        let mapper_flush = result.map_err(|e| match e {
-            MapToError::FrameAllocationFailed => MapError::NoPhysicalMemory,
-            MapToError::ParentEntryHugePage => MapError::InvalidAddress,
-            MapToError::PageAlreadyMapped(_) => MapError::AlreadyMapped,
-        })?;
-        mapper_flush.flush();
-        debug!("Mapped {:?} -> {:?}", virtual_addr, physical_addr);
+        let result = unsafe { self.page_table.map_to(page, frame, flags.into(), &mut *pmm) };
 
-        Ok(())
+        match result {
+            Ok(flush) => {
+                flush.flush();
+                debug!("Successfully mapped page");
+                Ok(())
+            }
+            Err(MapToError::FrameAllocationFailed) => {
+                warn!("Failed to allocate page table frame");
+                Err(MapError::NoPhysicalMemory)
+            }
+            Err(MapToError::ParentEntryHugePage) => {
+                warn!("Cannot map: parent entry is a huge page");
+                Err(MapError::InvalidAddress)
+            }
+            Err(MapToError::PageAlreadyMapped(_)) => {
+                warn!("Page already mapped");
+                Err(MapError::AlreadyMapped)
+            }
+        }
     }
 
     fn unmap(&mut self, virtual_addr: VirtualAddress) -> Result<(), UnmapError> {
+        if !virtual_addr.is_page_aligned() {
+            return Err(UnmapError::InvalidAddress);
+        }
+
         let page = Page::<Size4KiB>::containing_address(VirtAddr::new(virtual_addr.as_u64()));
-        let result = self.page_table.unmap(page);
-        let (_, flush) = result.map_err(|e| match e {
-            X86UnmapError::ParentEntryHugePage => UnmapError::InvalidAddress,
-            X86UnmapError::PageNotMapped => UnmapError::NotMapped,
-            X86UnmapError::InvalidFrameAddress(_) => UnmapError::InvalidAddress,
-        })?;
 
-        flush.flush();
+        debug!("Unmapping page at {:#x}", virtual_addr.as_u64());
 
-        Ok(())
+        match self.page_table.unmap(page) {
+            Ok((_, flush)) => {
+                flush.flush();
+                debug!("Successfully unmapped page");
+                Ok(())
+            }
+            Err(X86UnmapError::ParentEntryHugePage) => {
+                warn!("Cannot unmap: parent entry is a huge page");
+                Err(UnmapError::InvalidAddress)
+            }
+            Err(X86UnmapError::PageNotMapped) => {
+                warn!("Page not mapped");
+                Err(UnmapError::NotMapped)
+            }
+            Err(X86UnmapError::InvalidFrameAddress(_)) => {
+                warn!("Invalid frame address");
+                Err(UnmapError::InvalidAddress)
+            }
+        }
     }
 }
 

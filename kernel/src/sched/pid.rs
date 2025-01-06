@@ -12,6 +12,14 @@ impl Pid {
         self.0 == 0
     }
 
+    pub const fn as_64(&self) -> u64 {
+        self.0 as u64
+    }
+
+    pub const fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+
     pub const MAX: Pid = Pid::new(usize::MAX);
 }
 

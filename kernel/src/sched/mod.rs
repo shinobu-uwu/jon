@@ -1,13 +1,12 @@
 use bitmap_allocator::{BitAlloc, BitAlloc64K};
 use lazy_static::lazy_static;
-use scheduler::Scheduler;
 use spinning_top::Spinlock;
 
 pub mod pid;
 pub mod scheduler;
+pub mod stack;
 pub mod task;
 
-pub static SCHEDULER: Spinlock<Scheduler> = Spinlock::new(Scheduler::new());
 lazy_static! {
     pub static ref PID_ALLOCATOR: Spinlock<BitAlloc64K> = {
         let mut bitmap = BitAlloc64K::default();
