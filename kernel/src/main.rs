@@ -41,13 +41,7 @@ unsafe extern "C" fn kmain() -> ! {
     assert!(BASE_REVISION.is_supported());
     logger::init().unwrap();
     arch::init();
-    let mut tasks = vec![];
 
-    for _ in 0..1000 {
-        tasks.push(Task::new(task_handler));
-    }
-
-    debug!("{:#?}", tasks);
     info!("It did not crash!");
 
     hcf();
