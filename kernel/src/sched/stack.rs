@@ -16,9 +16,16 @@ pub struct KernelStack {
 
 impl KernelStack {
     pub fn new(base: VirtualAddress, size: usize) -> Self {
-        let frame = PMM.lock().allocate_contiguous(size).unwrap();
+        let pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE; // this must be page-aligned
+        let page_aligned_size = pages_needed * PAGE_SIZE;
+        let frame = PMM.lock().allocate_contiguous(page_aligned_size).unwrap();
         VMM.lock()
-            .map_range(base, frame, size, PageFlags::PRESENT | PageFlags::WRITABLE)
+            .map_range(
+                base,
+                frame,
+                page_aligned_size,
+                PageFlags::PRESENT | PageFlags::WRITABLE,
+            )
             .unwrap();
 
         Self { base, size }
