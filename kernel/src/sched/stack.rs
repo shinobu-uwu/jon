@@ -9,26 +9,30 @@ use crate::{
 };
 
 #[derive(Debug)]
+/// Represents a kernel stack that grows downwards
 pub struct KernelStack {
+    /// The base address of the stack, since it grows downwards, this is the lowest address
     pub base: VirtualAddress,
+    /// The size of the stack in bytes, does not need to be page-aligned as it will aligned by the
+    /// new function
     pub size: usize,
+    /// The top of the stack, since it grows downwards, this is the highest address when the stack
+    /// is empty.
+    pub top: VirtualAddress,
 }
 
 impl KernelStack {
     pub fn new(base: VirtualAddress, size: usize) -> Self {
-        let pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE; // this must be page-aligned
-        let page_aligned_size = pages_needed * PAGE_SIZE;
-        let frame = PMM.lock().allocate_contiguous(page_aligned_size).unwrap();
+        let frame = PMM.lock().allocate_contiguous(size).unwrap();
         VMM.lock()
-            .map_range(
-                base,
-                frame,
-                page_aligned_size,
-                PageFlags::PRESENT | PageFlags::WRITABLE,
-            )
+            .map_range(base, frame, size, PageFlags::PRESENT | PageFlags::WRITABLE)
             .unwrap();
 
-        Self { base, size }
+        Self {
+            base,
+            size,
+            top: VirtualAddress::new(base.as_usize() + size),
+        }
     }
 }
 
