@@ -25,7 +25,7 @@ bitflags! {
     pub struct PageFlags: u64 {
         const PRESENT       = 1 << 0;
         const WRITABLE     = 1 << 1;
-        const USER         = 1 << 2;
+        const USER_ACCESSIBLE         = 1 << 2;
         const WRITE_THROUGH = 1 << 3;
         const NO_CACHE     = 1 << 4;
         const ACCESSED     = 1 << 5;

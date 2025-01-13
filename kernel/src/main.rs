@@ -15,7 +15,8 @@ use limine::BaseRevision;
 use log::{debug, error, info};
 use output::logger;
 use sched::task::Task;
-use x86_64::instructions::interrupts::disable;
+use sched::SCHEDULER;
+use x86_64::instructions::interrupts::{disable, enable};
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -41,47 +42,17 @@ unsafe extern "C" fn kmain() -> ! {
     logger::init().unwrap();
     arch::init();
 
-    let task = Task::new(task_handler);
-    info!("It did not crash!");
+    disable();
 
-    debug!("{:#x?}", task.stack);
-    unsafe {
-        task.context.restore();
-    }
+    let mut scheduler = SCHEDULER.lock();
+    let task = Task::new();
+    debug!("Created task {:?}", task);
+    scheduler.add_task(task);
+    drop(scheduler);
 
-    hcf();
-}
-
-#[inline(always)]
-fn read_rsp() -> u64 {
-    let rsp: u64;
-
-    unsafe {
-        asm!(
-            "mov {}, rsp", out(reg) rsp,
-        );
-    }
-
-    rsp
-}
-
-extern "C" fn task_handler() {
-    debug!("RSP: {:#x}", read_rsp());
-    debug!("Handling task");
-    debug!("Handling task");
-    debug!("Handling task");
-    debug!("Handling task");
-    debug!("Handling task");
+    enable();
 
     hcf();
-}
-
-extern "C" fn task_handler2() {
-    debug!("Handling task 2");
-    debug!("Handling task 2");
-    debug!("Handling task 2");
-    debug!("Handling task 2");
-    debug!("Handling task 2");
 }
 
 #[panic_handler]

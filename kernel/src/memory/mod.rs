@@ -8,6 +8,7 @@ use log::debug;
 pub mod address;
 pub mod paging;
 pub mod physical;
+pub mod stack;
 
 pub const PAGE_SIZE: usize = 4096;
 

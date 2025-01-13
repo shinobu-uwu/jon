@@ -36,6 +36,15 @@ impl X86VirtualMemoryManager {
         Self { page_table }
     }
 
+    pub fn page_flags(&self, virtual_addr: VirtualAddress) -> Option<PageTableFlags> {
+        let virt_addr = VirtAddr::new(virtual_addr.as_u64());
+        match self.page_table.translate(virt_addr) {
+            TranslateResult::Mapped { flags, .. } => Some(flags),
+            TranslateResult::NotMapped => None,
+            TranslateResult::InvalidFrameAddress(_) => None,
+        }
+    }
+
     /// Maps a range of virtual addresses to physical addresses
     pub fn map_range(
         &mut self,
@@ -184,7 +193,7 @@ impl From<PageFlags> for PageTableFlags {
         if flags.contains(PageFlags::WRITABLE) {
             x86_flags |= PageTableFlags::WRITABLE;
         }
-        if flags.contains(PageFlags::USER) {
+        if flags.contains(PageFlags::USER_ACCESSIBLE) {
             x86_flags |= PageTableFlags::USER_ACCESSIBLE;
         }
         if flags.contains(PageFlags::WRITE_THROUGH) {

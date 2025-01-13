@@ -4,8 +4,9 @@ use spinning_top::Spinlock;
 
 pub mod pid;
 pub mod scheduler;
-pub mod stack;
 pub mod task;
+
+pub static SCHEDULER: Spinlock<scheduler::Scheduler> = Spinlock::new(scheduler::Scheduler::new());
 
 lazy_static! {
     pub static ref PID_ALLOCATOR: Spinlock<BitAlloc64K> = {
