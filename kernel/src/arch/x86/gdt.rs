@@ -52,6 +52,7 @@ lazy_static! {
     };
 }
 
+#[repr(C)]
 pub struct Selectors {
     pub kernel_code_selector: SegmentSelector,
     pub kernel_data_selector: SegmentSelector,

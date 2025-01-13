@@ -31,14 +31,14 @@ pub struct Task {
 pub struct Context {
     // Callee-saved registers
     rsp: u64, // Stack pointer
+    // Return address for context switch
+    rip: u64,
     rbp: u64, // Base pointer
     rbx: u64,
     r12: u64,
     r13: u64,
     r14: u64,
     r15: u64,
-    // Return address for context switch
-    rip: u64,
 }
 
 impl Task {
@@ -67,26 +67,24 @@ impl Task {
         }
     }
 
-    #[inline]
+    #[inline(always)]
+    #[no_mangle]
     pub unsafe fn restore(&self) -> ! {
-        debug!("Restoring task {:#x?}", self);
+        debug!("Restoring task {:#x?}", self,);
         asm!(
-            "mov rax, {data_selector}",
-            "mov ds, rax",
-            "mov es, rax",
-            "mov fs, rax",
-            "mov gs, rax", // SS is handled by iret
+            "mov ds, [{gdt} + 6]",
+            "mov es, [{gdt} + 6]",
+            "mov fs, [{gdt} + 6]",
+            "mov gs, [{gdt} + 6]", // SS is handled by iret
             // setup the stack frame iret expects
-            "mov rax, rsp",
-            "push {data_selector}", // data selector
-            "push rax",          // stack pointer
+            "push [{gdt} + 6]", // data selector
+            "push [{context}]",          // stack pointer
             "pushf",
-            "push {code_selector}", // code selector
-            "push {rip}",
+            "push [{gdt} + 4]", // code selector
+            "push [{context} + 8]", // instruction pointer
             "iretq",
-            rip = in(reg) self.context.rip,
-            data_selector = in(reg) GDT.1.user_data_selector.0 as u64,
-            code_selector = in(reg) GDT.1.user_code_selector.0 as u64,
+            gdt = in(reg) &GDT.1, // each selector is 16 bits
+            context = in(reg) &self.context,
             options(noreturn)
         );
     }
