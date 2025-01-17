@@ -211,9 +211,9 @@ extern "x86-interrupt" fn cp_protection_handler(stack_frame: InterruptStackFrame
 }
 
 // LAPIC handlers
-extern "x86-interrupt" fn timer_interrupt_handler(_frame: InterruptStackFrame) {
+extern "x86-interrupt" fn timer_interrupt_handler(frame: InterruptStackFrame) {
     unsafe {
-        tick();
+        tick(&frame);
         LAPIC.lock().as_mut().unwrap().end_of_interrupt();
     }
 }

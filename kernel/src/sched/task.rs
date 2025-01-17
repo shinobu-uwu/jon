@@ -66,8 +66,9 @@ impl Task {
         }
     }
 
-    pub unsafe fn save(&mut self) {
-        todo!();
+    pub unsafe fn save(&mut self, stack_frame: &InterruptStackFrame) {
+        self.context.rip = stack_frame.instruction_pointer.as_u64();
+        self.context.rsp = stack_frame.stack_pointer.as_u64();
         debug!("Saved {:#x?}", self);
     }
 
@@ -114,7 +115,7 @@ fn load_binary(binary: &[u8], user_virt_addr: VirtualAddress) {
 
     // Copy binary data to the mapped region
     unsafe {
-        core::ptr::copy_nonoverlapping(
+        core::ptr::copy(
             binary.as_ptr(),
             user_virt_addr.as_usize() as *mut u8,
             binary.len(),

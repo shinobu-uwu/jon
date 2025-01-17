@@ -5,9 +5,8 @@ use log::debug;
 use pid::Pid;
 use spinning_top::Spinlock;
 use task::Task;
-use x86_64::structures::idt::InterruptStackFrame;
 
-use crate::arch::end_of_interrupt;
+use crate::arch::{end_of_interrupt, InterruptStackFrame};
 
 pub mod pid;
 pub mod task;
@@ -27,9 +26,10 @@ pub static mut CURRENT_PID: Option<Pid> = None;
 static mut CONTEXT_SWITCH_LOCK: bool = false;
 static mut TICKS: usize = 0;
 
-pub unsafe fn tick() {
+pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
     TICKS += 1;
 
+    // Only switch tasks every 10 ticks
     if TICKS % 10 != 0 {
         return;
     }
@@ -39,6 +39,7 @@ pub unsafe fn tick() {
         return;
     }
 
+    // Use a lock or atomic operation to ensure thread safety when modifying TASKS and CURRENT_PID
     match CURRENT_PID {
         Some(pid) => {
             if TASKS.len() < 2 {
@@ -46,30 +47,50 @@ pub unsafe fn tick() {
                 return;
             }
 
-            let current_task = TASKS.get(&pid).unwrap();
-            let next_pid = TASKS.keys().find(|&&pid| pid != current_task.pid).unwrap();
-            CURRENT_PID.replace(*next_pid);
-            debug!("Switching tasks");
-            switch_to(*next_pid);
+            // Get current task and find the next task to switch to
+            let current_task = TASKS
+                .get(&pid)
+                .expect("Current task should exist in the task list");
+            let next_pid = TASKS
+                .keys()
+                .filter(|&&next_pid| next_pid != current_task.pid)
+                .next() // Get the next available PID, skipping the current one
+                .expect("There should be another task to switch to");
+
+            debug!(
+                "Switching from task {} to task {}",
+                current_task.pid, *next_pid
+            );
+
+            switch_to(*next_pid, stack_frame);
         }
         None => {
-            let next_pid = TASKS.keys().next().unwrap();
-            let next_task = TASKS.get(next_pid).unwrap();
-            CURRENT_PID.replace(*next_pid);
-            next_task.restore();
+            // No task is currently running, so start the first task in the list
+            if let Some(next_pid) = TASKS.keys().next() {
+                CURRENT_PID.replace(*next_pid);
+                let next_task = TASKS
+                    .get(next_pid)
+                    .expect("Next task should exist in the task list");
+                debug!("Starting the first task: {}", next_pid);
+                next_task.restore();
+            } else {
+                debug!("No task available to start");
+            }
         }
     }
 }
 
-pub unsafe fn switch_to(next_task: Pid) {
+pub unsafe fn switch_to(next_pid: Pid, stack_frame: &InterruptStackFrame) {
     CONTEXT_SWITCH_LOCK = true;
     if let Some(prev_pid) = CURRENT_PID {
         let prev_task = TASKS.get_mut(&prev_pid).unwrap();
-        prev_task.save();
+        prev_task.save(stack_frame);
     }
 
-    let next_task = TASKS.get(&next_task).unwrap();
+    let next_task = TASKS.get(&next_pid).unwrap();
     CONTEXT_SWITCH_LOCK = false;
+
+    CURRENT_PID.replace(next_pid);
     end_of_interrupt();
     next_task.restore();
 }
