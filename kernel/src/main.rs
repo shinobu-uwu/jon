@@ -15,7 +15,7 @@ use limine::BaseRevision;
 use log::{debug, error, info};
 use output::logger;
 use sched::task::Task;
-use sched::SCHEDULER;
+use sched::TASKS;
 use x86_64::instructions::interrupts::{disable, enable};
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -44,11 +44,10 @@ unsafe extern "C" fn kmain() -> ! {
 
     disable();
 
-    let mut scheduler = SCHEDULER.lock();
-    let task = Task::new();
-    debug!("Created task {:?}", task);
-    scheduler.add_task(task);
-    drop(scheduler);
+    let task = Task::new(include_bytes!("./bin/test"));
+    TASKS.insert(task.pid, task);
+    let task = Task::new(include_bytes!("./bin/test"));
+    TASKS.insert(task.pid, task);
 
     enable();
 

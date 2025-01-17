@@ -1,5 +1,5 @@
 use crate::arch::x86::interrupts::{ERROR_VECTOR, LAPIC, SPURIOUS_VECTOR, TIMER_VECTOR};
-use crate::sched::SCHEDULER;
+use crate::sched::tick;
 use lazy_static::lazy_static;
 use log::{debug, info};
 use spinning_top::Spinlock;
@@ -212,8 +212,8 @@ extern "x86-interrupt" fn cp_protection_handler(stack_frame: InterruptStackFrame
 
 // LAPIC handlers
 extern "x86-interrupt" fn timer_interrupt_handler(_frame: InterruptStackFrame) {
-    SCHEDULER.lock().tick();
     unsafe {
+        tick();
         LAPIC.lock().as_mut().unwrap().end_of_interrupt();
     }
 }

@@ -2,10 +2,12 @@ use core::arch::asm;
 
 use bitmap_allocator::BitAlloc;
 use log::debug;
+use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
     arch::x86::{
         gdt::GDT,
+        interrupts::LAPIC,
         memory::{PMM, VMM},
     },
     memory::{
@@ -20,14 +22,13 @@ const STACK_SIZE: usize = 0x4000; // 16 KiB
 
 #[derive(Debug)]
 pub struct Task {
-    pid: Pid,
+    pub pid: Pid,
     kernel_stack: Stack,
-    user_stack: Stack,
     context: Context,
 }
 
 #[repr(C)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Context {
     // Callee-saved registers
     rsp: u64, // Stack pointer
@@ -42,35 +43,37 @@ pub struct Context {
 }
 
 impl Task {
-    pub fn new() -> Self {
+    pub fn new(binary: &[u8]) -> Self {
         let pid = Pid::new(PID_ALLOCATOR.lock().alloc().unwrap());
         debug!("Creating task with PID {}", pid);
         let kernel_stack = Stack::new(
             VirtualAddress::new(STACK_START + pid.as_usize() * STACK_SIZE),
             STACK_SIZE,
         );
-        let user_stack_addr = VirtualAddress::new(0x7FFF_FFFF_0000);
-        let user_stack = Stack::new(user_stack_addr, STACK_SIZE);
         let mut context = Context::default();
-        let bin_addr = load_binary(include_bytes!("../bin/task"));
+        let bin_addr = VirtualAddress::new(0x400000 + (pid.as_usize() - 1) * PAGE_SIZE); // TODO: Use a better dynamic address
+        load_binary(binary, bin_addr);
         let bin_flags = VMM.lock().page_flags(bin_addr).unwrap();
         debug!("Binary at {:#x?} with flags {:#x?}", bin_addr, bin_flags);
 
-        context.rsp = user_stack.top().as_u64();
+        context.rsp = kernel_stack.top().as_u64();
         context.rip = bin_addr.as_u64();
 
         Self {
             pid,
             kernel_stack,
-            user_stack,
             context,
         }
     }
 
-    #[inline(always)]
-    #[no_mangle]
+    pub unsafe fn save(&mut self) {
+        todo!();
+        debug!("Saved {:#x?}", self);
+    }
+
     pub unsafe fn restore(&self) -> ! {
         debug!("Restoring task {:#x?}", self,);
+        LAPIC.lock().as_mut().unwrap().end_of_interrupt();
         asm!(
             "mov ds, [{gdt} + 6]",
             "mov es, [{gdt} + 6]",
@@ -79,7 +82,7 @@ impl Task {
             // setup the stack frame iret expects
             "push [{gdt} + 6]", // data selector
             "push [{context}]",          // stack pointer
-            "pushf",
+            "push 0x3202",
             "push [{gdt} + 4]", // code selector
             "push [{context} + 8]", // instruction pointer
             "iretq",
@@ -90,7 +93,7 @@ impl Task {
     }
 }
 
-fn load_binary(binary: &[u8]) -> VirtualAddress {
+fn load_binary(binary: &[u8], user_virt_addr: VirtualAddress) {
     let pages_needed = (binary.len() + PAGE_SIZE - 1) / PAGE_SIZE;
 
     // Allocate physical memory for the binary
@@ -100,7 +103,6 @@ fn load_binary(binary: &[u8]) -> VirtualAddress {
         .unwrap();
 
     // Map it into user space with appropriate permissions
-    let user_virt_addr = VirtualAddress::new(0x400000); // Common starting point for user programs
     VMM.lock()
         .map_range(
             user_virt_addr,
@@ -118,6 +120,4 @@ fn load_binary(binary: &[u8]) -> VirtualAddress {
             binary.len(),
         );
     }
-
-    user_virt_addr
 }
