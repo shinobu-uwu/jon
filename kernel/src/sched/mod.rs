@@ -8,6 +8,7 @@ use task::Task;
 
 use crate::arch::{end_of_interrupt, InterruptStackFrame};
 
+pub mod memory;
 pub mod pid;
 pub mod task;
 
@@ -29,7 +30,6 @@ static mut TICKS: usize = 0;
 pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
     TICKS += 1;
 
-    // Only switch tasks every 10 ticks
     if TICKS % 10 != 0 {
         return;
     }
@@ -39,7 +39,6 @@ pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
         return;
     }
 
-    // Use a lock or atomic operation to ensure thread safety when modifying TASKS and CURRENT_PID
     match CURRENT_PID {
         Some(pid) => {
             if TASKS.len() < 2 {
@@ -47,7 +46,6 @@ pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
                 return;
             }
 
-            // Get current task and find the next task to switch to
             let current_task = TASKS
                 .get(&pid)
                 .expect("Current task should exist in the task list");
@@ -65,7 +63,6 @@ pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
             switch_to(*next_pid, stack_frame);
         }
         None => {
-            // No task is currently running, so start the first task in the list
             if let Some(next_pid) = TASKS.keys().next() {
                 CURRENT_PID.replace(*next_pid);
                 let next_task = TASKS

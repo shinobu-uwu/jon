@@ -36,8 +36,8 @@ lazy_static! {
         let mut gdt = GlobalDescriptorTable::new();
         let kernel_code_selector = gdt.append(Descriptor::kernel_code_segment());
         let kernel_data_selector = gdt.append(Descriptor::kernel_data_segment());
-        let user_code_selector = gdt.append(Descriptor::user_code_segment());
         let user_data_selector = gdt.append(Descriptor::user_data_segment());
+        let user_code_selector = gdt.append(Descriptor::user_code_segment());
         let tss_selector = gdt.append(Descriptor::tss_segment(&TSS));
         (
             gdt,
@@ -65,12 +65,8 @@ pub fn init() {
     GDT.0.load();
 
     unsafe {
-        // code segment
         CS::set_reg(GDT.1.kernel_code_selector);
-
-        // data segments
         SS::set_reg(GDT.1.kernel_data_selector);
-
         load_tss(GDT.1.tss_selector);
     }
 

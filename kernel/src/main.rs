@@ -1,18 +1,19 @@
 #![no_std]
 #![no_main]
-#![feature(abi_x86_interrupt)]
+#![feature(abi_x86_interrupt, naked_functions, fn_align)]
 
 mod arch;
 mod memory;
 mod output;
 mod sched;
+mod syscall;
 
 use core::arch::asm;
 
 use arch::x86::interrupts::LAPIC;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
-use log::{debug, error, info};
+use log::error;
 use output::logger;
 use sched::task::Task;
 use sched::TASKS;
@@ -41,6 +42,7 @@ unsafe extern "C" fn kmain() -> ! {
     assert!(BASE_REVISION.is_supported());
     logger::init().unwrap();
     arch::init();
+    syscall::init();
 
     disable();
 

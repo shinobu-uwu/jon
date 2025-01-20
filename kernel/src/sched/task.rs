@@ -23,8 +23,17 @@ const STACK_SIZE: usize = 0x4000; // 16 KiB
 #[derive(Debug)]
 pub struct Task {
     pub pid: Pid,
+    pub state: State,
     kernel_stack: Stack,
     context: Context,
+}
+
+#[derive(Debug)]
+pub enum State {
+    Running,
+    Sleeping,
+    Waiting,
+    Zombie,
 }
 
 #[repr(C)]
@@ -63,17 +72,18 @@ impl Task {
             pid,
             kernel_stack,
             context,
+            state: State::Running,
         }
     }
 
     pub unsafe fn save(&mut self, stack_frame: &InterruptStackFrame) {
         self.context.rip = stack_frame.instruction_pointer.as_u64();
         self.context.rsp = stack_frame.stack_pointer.as_u64();
-        debug!("Saved {:#x?}", self);
+        // debug!("Saved {:#x?}", self);
     }
 
     pub unsafe fn restore(&self) -> ! {
-        debug!("Restoring task {:#x?}", self,);
+        // debug!("Restoring task {:#x?}", self,);
         LAPIC.lock().as_mut().unwrap().end_of_interrupt();
         asm!(
             "mov ds, [{gdt} + 6]",
