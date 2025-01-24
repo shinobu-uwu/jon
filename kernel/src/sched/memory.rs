@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
-use bitflags::bitflags;
+
+use crate::memory::{address::VirtualAddress, paging::PageFlags};
 
 #[derive(Debug)]
 pub struct MemoryDescriptor {
@@ -11,20 +12,32 @@ pub struct MemoryDescriptor {
 }
 
 #[derive(Debug)]
-pub struct MemoryRegion {
+struct MemoryRegion {
     pub start: u64,
     pub end: u64,
-    pub flags: MemoryRegionFlags,
+    pub flags: PageFlags,
 }
 
-bitflags! {
-    #[derive(Debug)]
-    pub struct MemoryRegionFlags: u64 {
-        const READABLE = 1 << 0;
-        const WRITABLE = 1 << 1;
-        const EXECUTABLE = 1 << 2;
-        const USER = 1 << 3;
-        const DEVICE = 1 << 4;
-        const MMIO = 1 << 5;
+impl MemoryDescriptor {
+    pub fn new() -> Self {
+        Self {
+            regions: Vec::new(),
+            start_brk: 0,
+            brk: 0,
+            start_stack: 0,
+            stack: 0,
+        }
+    }
+
+    pub fn add_region(&mut self, start: u64, end: u64, flags: PageFlags) {
+        self.regions.push(MemoryRegion { start, end, flags });
+    }
+
+    pub fn find_region(&self, address: VirtualAddress) -> Option<&MemoryRegion> {
+        let addr = address.as_u64();
+
+        self.regions
+            .iter()
+            .find(|region| region.start <= addr && addr < region.end)
     }
 }

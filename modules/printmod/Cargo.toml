@@ -1,0 +1,15 @@
+[package]
+name = "printmod"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jon_common = { path = "../common" }
+
+[profile.dev]
+panic = "abort"
+debug = true
+
+[profile.release]
+panic = "abort"
+

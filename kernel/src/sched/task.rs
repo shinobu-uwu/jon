@@ -1,21 +1,22 @@
 use core::arch::asm;
 
 use bitmap_allocator::BitAlloc;
+use goblin::elf::Elf;
 use log::debug;
 use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
-    arch::x86::{
-        gdt::GDT,
-        interrupts::LAPIC,
-        memory::{PMM, VMM},
-    },
+    arch::x86::{gdt::GDT, interrupts::LAPIC, memory::VMM},
     memory::{
-        address::VirtualAddress, paging::PageFlags, physical::PhysicalMemoryManager, stack::Stack,
+        address::{PhysicalAddress, VirtualAddress},
+        paging::PageFlags,
+        stack::Stack,
         PAGE_SIZE,
     },
     sched::{pid::Pid, PID_ALLOCATOR},
 };
+
+use super::memory::MemoryDescriptor;
 
 const STACK_START: usize = 0xffff888000000000;
 const STACK_SIZE: usize = 0x4000; // 16 KiB
@@ -25,6 +26,7 @@ pub struct Task {
     pub pid: Pid,
     pub state: State,
     kernel_stack: Stack,
+    memory_descriptor: MemoryDescriptor,
     context: Context,
 }
 
@@ -60,19 +62,20 @@ impl Task {
             STACK_SIZE,
         );
         let mut context = Context::default();
-        let bin_addr = VirtualAddress::new(0x400000 + (pid.as_usize() - 1) * PAGE_SIZE); // TODO: Use a better dynamic address
-        load_binary(binary, bin_addr);
+        let bin_addr = VirtualAddress::new(0x400000 + (pid.as_usize() - 1) * PAGE_SIZE * 100); // TODO: Use a better dynamic address
+        let (memory_descriptor, rip) = load_binary(binary).unwrap();
         let bin_flags = VMM.lock().page_flags(bin_addr).unwrap();
         debug!("Binary at {:#x?} with flags {:#x?}", bin_addr, bin_flags);
 
         context.rsp = kernel_stack.top().as_u64();
-        context.rip = bin_addr.as_u64();
+        context.rip = rip.as_u64();
 
         Self {
             pid,
             kernel_stack,
             context,
             state: State::Running,
+            memory_descriptor,
         }
     }
 
@@ -104,31 +107,4 @@ impl Task {
     }
 }
 
-fn load_binary(binary: &[u8], user_virt_addr: VirtualAddress) {
-    let pages_needed = (binary.len() + PAGE_SIZE - 1) / PAGE_SIZE;
-
-    // Allocate physical memory for the binary
-    let phys_addr = PMM
-        .lock()
-        .allocate_contiguous(pages_needed * PAGE_SIZE)
-        .unwrap();
-
-    // Map it into user space with appropriate permissions
-    VMM.lock()
-        .map_range(
-            user_virt_addr,
-            phys_addr,
-            pages_needed * PAGE_SIZE,
-            PageFlags::PRESENT | PageFlags::USER_ACCESSIBLE | PageFlags::WRITABLE,
-        )
-        .unwrap();
-
-    // Copy binary data to the mapped region
-    unsafe {
-        core::ptr::copy(
-            binary.as_ptr(),
-            user_virt_addr.as_usize() as *mut u8,
-            binary.len(),
-        );
-    }
-}
+fn load_binary(binary: &[u8]) -> Result<(MemoryDescriptor, VirtualAddress), &'static str> {}
