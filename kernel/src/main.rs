@@ -11,9 +11,9 @@ mod syscall;
 use core::arch::asm;
 
 use arch::x86::interrupts::LAPIC;
-use limine::request::{RequestsEndMarker, RequestsStartMarker};
+use limine::request::{RequestsEndMarker, RequestsStartMarker, SmpRequest};
 use limine::BaseRevision;
-use log::error;
+use log::{debug, error, info};
 use output::logger;
 use sched::task::Task;
 use sched::TASKS;
@@ -26,6 +26,10 @@ use x86_64::instructions::interrupts::{disable, enable, software_interrupt};
 // The .requests section allows limine to find the requests faster and more safely.
 #[link_section = ".requests"]
 static BASE_REVISION: BaseRevision = BaseRevision::new();
+
+#[used]
+#[link_section = ".requests"]
+static SMP_REQUEST: SmpRequest = SmpRequest::new();
 
 /// Define the stand and end markers for Limine requests.
 #[used]

@@ -1,6 +1,6 @@
 use core::arch::{asm, naked_asm};
 
-use crate::arch::x86::gdt::GDT;
+use crate::{arch::x86::gdt::GDT, sched::remove_current_task};
 use log::{debug, info};
 use x86_64::{
     registers::{
@@ -12,7 +12,7 @@ use x86_64::{
 };
 
 static SYSCALLS: &[Option<fn(usize, usize, usize, usize, usize, usize) -> usize>] =
-    &[None, Some(sys_print)];
+    &[Some(sys_exit), Some(sys_print)];
 
 pub(super) fn init() {
     // Enable syscall/sysret
@@ -130,5 +130,14 @@ fn sys_print(string_ptr: usize, length: usize, _: usize, _: usize, _: usize, _: 
     let string = unsafe { core::slice::from_raw_parts(string_ptr as *const u8, length) };
     let string = core::str::from_utf8(string).unwrap();
     info!("{}", string);
+    0
+}
+
+fn sys_exit(code: usize, _: usize, _: usize, _: usize, _: usize, _: usize) -> usize {
+    debug!("Exiting with code: {}", code);
+    unsafe {
+        remove_current_task();
+    };
+
     0
 }

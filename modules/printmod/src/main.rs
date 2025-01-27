@@ -1,11 +1,12 @@
 #![no_std]
 #![no_main]
 
-use jon_common::println;
+use jon_common::{module_entrypoint, println, ExitCode};
 
-#[no_mangle]
-fn _start() -> ! {
-    loop {
-        println!("Hello, world from module!");
-    }
+module_entrypoint!("printmod", "A simple kernel module", "1.0.0", main);
+
+fn main() -> Result<(), ExitCode> {
+    println!("Hello, world from module!");
+
+    Ok(())
 }

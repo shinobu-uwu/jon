@@ -1,14 +1,12 @@
-use alloc::vec::Vec;
 use goblin::elf::{self, program_header::ProgramHeader, Elf};
 use log::debug;
-use x86_64::instructions::segmentation;
 
 use crate::{
     arch::x86::memory::{PMM, VMM},
     memory::{
         address::VirtualAddress,
-        loader::Loader,
-        paging::{align_down, PageFlags, VirtualMemoryManager},
+        loader::{Loader, LoadingError},
+        paging::{align_down, PageFlags},
         physical::PhysicalMemoryManager,
         PAGE_SIZE,
     },
@@ -27,18 +25,26 @@ impl ElfLoader {
         base_address: VirtualAddress,
         binary: &[u8],
         segment: &ProgramHeader,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), LoadingError> {
+        if segment.p_memsz == 0 {
+            return Ok(());
+        }
+
+        if segment.p_offset + segment.p_filesz > binary.len() as u64 {
+            return Err(LoadingError::InvalidInput);
+        }
+
         let vaddr = align_down(segment.p_vaddr as usize, PAGE_SIZE);
         let phys = PMM
             .lock()
-            .allocate()
-            .map_err(|_| "Failed to allocate physical memory")?;
+            .allocate_contiguous(segment.p_memsz as usize)
+            .map_err(|_| LoadingError::MemoryAllocationError)?;
         let virt = VirtualAddress::new(base_address.as_usize() + vaddr as usize);
         let flags = PageFlags::USER_ACCESSIBLE | PageFlags::PRESENT | PageFlags::WRITABLE;
 
         VMM.lock()
-            .map(virt, phys, flags)
-            .map_err(|_| "Failed to map memory")?;
+            .map_range(virt, phys, segment.p_memsz as usize, flags)
+            .map_err(|_| LoadingError::MappingError)?;
         unsafe {
             core::ptr::copy_nonoverlapping(
                 binary.as_ptr().offset(segment.p_offset as isize),
@@ -69,8 +75,8 @@ impl Loader for ElfLoader {
         &self,
         base_address: VirtualAddress,
         binary: &[u8],
-    ) -> Result<(MemoryDescriptor, VirtualAddress), &'static str> {
-        let elf = Elf::parse(binary).map_err(|_| "Failed to parse ELF")?;
+    ) -> Result<(MemoryDescriptor, VirtualAddress), LoadingError> {
+        let elf = Elf::parse(binary).map_err(|_| LoadingError::ParseError)?;
         let mut memory_descriptor = MemoryDescriptor::new();
 
         for ph in elf.program_headers {
@@ -83,6 +89,7 @@ impl Loader for ElfLoader {
             let flags = PageFlags::USER_ACCESSIBLE | PageFlags::PRESENT | PageFlags::WRITABLE;
 
             self.load_segment(base_address, binary, &ph)?;
+
             let area_type = if ph.p_flags & elf::program_header::PF_X != 0 {
                 MemoryAreaType::Text
             } else if ph.p_flags & elf::program_header::PF_W != 0 {

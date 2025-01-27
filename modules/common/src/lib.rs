@@ -2,6 +2,16 @@
 
 use core::arch::asm;
 
+#[derive(Debug)]
+pub struct ModuleInfo {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub version: &'static str,
+}
+
+#[derive(Debug)]
+pub struct ExitCode(pub usize);
+
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     println!("{}", info);
@@ -39,6 +49,13 @@ unsafe extern "sysv64" fn syscall(
     result
 }
 
+pub fn exit(code: ExitCode) -> ! {
+    unsafe {
+        syscall(0, code.0, 0, 0, 0, 0, 0);
+    }
+    loop {}
+}
+
 #[inline]
 #[doc(hidden)]
 pub fn _print(args: core::fmt::Arguments) {
@@ -59,4 +76,31 @@ macro_rules! println {
     ($($arg:tt)*) => {{
         $crate::print!("{}\n", format_args!($($arg)*))
     }};
+}
+
+#[macro_export]
+macro_rules! module_entrypoint {
+    ($name:expr, $description:expr, $version:expr, $entrypoint:ident) => {
+        #[no_mangle]
+        #[link_section = ".module_info"]
+        static MODULE_INFO: $crate::ModuleInfo = $crate::ModuleInfo {
+            name: $name,
+            description: $description,
+            version: $version,
+        };
+
+        #[no_mangle]
+        pub extern "C" fn _start() -> ! {
+            let result = $entrypoint();
+
+            let exit_code = match result {
+                Ok(_) => ExitCode(0),
+                Err(code) => code,
+            };
+
+            unsafe {
+                $crate::exit(exit_code);
+            }
+        }
+    };
 }

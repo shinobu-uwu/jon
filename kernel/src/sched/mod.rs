@@ -25,7 +25,7 @@ lazy_static! {
 pub static mut TASKS: BTreeMap<Pid, Task> = BTreeMap::new();
 pub static mut CURRENT_PID: Option<Pid> = None;
 static mut CONTEXT_SWITCH_LOCK: bool = false;
-static mut TICKS: usize = 0;
+static mut TICKS: u8 = 0;
 
 pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
     TICKS += 1;
@@ -33,6 +33,8 @@ pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
     if TICKS % 10 != 0 {
         return;
     }
+
+    TICKS = 0;
 
     if TASKS.is_empty() {
         debug!("No tasks to switch to");
@@ -90,4 +92,25 @@ pub unsafe fn switch_to(next_pid: Pid, stack_frame: &InterruptStackFrame) {
     CURRENT_PID.replace(next_pid);
     end_of_interrupt();
     next_task.restore();
+}
+
+pub unsafe fn remove_current_task() {
+    if let Some(current_pid) = CURRENT_PID {
+        if let Some(_) = TASKS.remove(&current_pid) {
+            PID_ALLOCATOR
+                .lock()
+                .insert(current_pid.as_usize()..current_pid.as_usize() + 1);
+        }
+
+        if let Some(&next_pid) = TASKS.keys().next() {
+            CURRENT_PID = Some(next_pid);
+            let next_task = TASKS.get(&next_pid).expect("Next task should exist");
+            debug!("Switching to task {} after exit", next_pid);
+            end_of_interrupt();
+            next_task.restore();
+        } else {
+            CURRENT_PID = None;
+            debug!("No more tasks to run after exit");
+        }
+    }
 }
