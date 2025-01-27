@@ -1,15 +1,14 @@
 use core::arch::asm;
 
 use bitmap_allocator::BitAlloc;
-use goblin::elf::Elf;
 use log::debug;
 use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
-    arch::x86::{gdt::GDT, interrupts::LAPIC, memory::VMM},
+    arch::x86::{gdt::GDT, interrupts::LAPIC},
     memory::{
-        address::{PhysicalAddress, VirtualAddress},
-        paging::PageFlags,
+        address::VirtualAddress,
+        loader::{elf::ElfLoader, Loader},
         stack::Stack,
         PAGE_SIZE,
     },
@@ -46,6 +45,7 @@ pub struct Context {
     // Return address for context switch
     rip: u64,
     rbp: u64, // Base pointer
+    rax: u64,
     rbx: u64,
     r12: u64,
     r13: u64,
@@ -63,9 +63,8 @@ impl Task {
         );
         let mut context = Context::default();
         let bin_addr = VirtualAddress::new(0x400000 + (pid.as_usize() - 1) * PAGE_SIZE * 100); // TODO: Use a better dynamic address
-        let (memory_descriptor, rip) = load_binary(binary).unwrap();
-        let bin_flags = VMM.lock().page_flags(bin_addr).unwrap();
-        debug!("Binary at {:#x?} with flags {:#x?}", bin_addr, bin_flags);
+        let loader = ElfLoader::new();
+        let (memory_descriptor, rip) = loader.load(bin_addr, binary).unwrap();
 
         context.rsp = kernel_stack.top().as_u64();
         context.rip = rip.as_u64();
@@ -86,7 +85,7 @@ impl Task {
     }
 
     pub unsafe fn restore(&self) -> ! {
-        // debug!("Restoring task {:#x?}", self,);
+        debug!("Restoring task {:#x?}", self,);
         LAPIC.lock().as_mut().unwrap().end_of_interrupt();
         asm!(
             "mov ds, [{gdt} + 6]",
@@ -106,5 +105,3 @@ impl Task {
         );
     }
 }
-
-fn load_binary(binary: &[u8]) -> Result<(MemoryDescriptor, VirtualAddress), &'static str> {}

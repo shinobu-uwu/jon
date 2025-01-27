@@ -5,6 +5,7 @@ use jon_common::println;
 
 #[no_mangle]
 fn _start() -> ! {
-    println!("Hello, world from module!");
-    loop {}
+    loop {
+        println!("Hello, world from module!");
+    }
 }

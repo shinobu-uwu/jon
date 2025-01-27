@@ -54,6 +54,16 @@ pub fn phys_to_virt(addr: usize) -> usize {
     *MEMORY_OFFSET as usize + addr
 }
 
+#[inline]
+pub fn align_down(addr: usize, align: usize) -> usize {
+    addr & !(align - 1)
+}
+
+#[inline]
+pub fn align_up(addr: usize, align: usize) -> usize {
+    (addr + align - 1) & !(align - 1)
+}
+
 impl Display for MapError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         use MapError::*;

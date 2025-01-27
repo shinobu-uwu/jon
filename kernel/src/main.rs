@@ -17,7 +17,7 @@ use log::error;
 use output::logger;
 use sched::task::Task;
 use sched::TASKS;
-use x86_64::instructions::interrupts::{disable, enable};
+use x86_64::instructions::interrupts::{disable, enable, software_interrupt};
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.

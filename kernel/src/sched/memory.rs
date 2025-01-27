@@ -4,7 +4,7 @@ use crate::memory::{address::VirtualAddress, paging::PageFlags};
 
 #[derive(Debug)]
 pub struct MemoryDescriptor {
-    pub regions: Vec<MemoryRegion>,
+    pub regions: Vec<VirtualMemoryArea>,
     pub start_brk: u64,
     pub brk: u64,
     pub start_stack: u64,
@@ -12,10 +12,19 @@ pub struct MemoryDescriptor {
 }
 
 #[derive(Debug)]
-struct MemoryRegion {
+struct VirtualMemoryArea {
     pub start: u64,
     pub end: u64,
     pub flags: PageFlags,
+    pub area_type: MemoryAreaType,
+}
+
+#[derive(Debug)]
+pub enum MemoryAreaType {
+    Text,
+    Data,
+    Heap,
+    Stack,
 }
 
 impl MemoryDescriptor {
@@ -29,11 +38,22 @@ impl MemoryDescriptor {
         }
     }
 
-    pub fn add_region(&mut self, start: u64, end: u64, flags: PageFlags) {
-        self.regions.push(MemoryRegion { start, end, flags });
+    pub fn add_region(
+        &mut self,
+        start: u64,
+        end: u64,
+        flags: PageFlags,
+        area_type: MemoryAreaType,
+    ) {
+        self.regions.push(VirtualMemoryArea {
+            start,
+            end,
+            flags,
+            area_type,
+        });
     }
 
-    pub fn find_region(&self, address: VirtualAddress) -> Option<&MemoryRegion> {
+    pub fn find_region(&self, address: VirtualAddress) -> Option<&VirtualMemoryArea> {
         let addr = address.as_u64();
 
         self.regions

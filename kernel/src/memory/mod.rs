@@ -6,6 +6,7 @@ use limine::{
 use log::debug;
 
 pub mod address;
+pub mod loader;
 pub mod paging;
 pub mod physical;
 pub mod stack;

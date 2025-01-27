@@ -19,8 +19,12 @@ impl PhysicalAddress {
         self.0 as u64
     }
 
-    pub fn page_align(&self) -> Self {
-        Self(self.0 & !(PAGE_SIZE - 1))
+    pub fn align_down(&self, align: usize) -> Self {
+        Self(self.0 & !(align - 1))
+    }
+
+    pub fn align_up(&self, align: usize) -> Self {
+        Self((self.0 + align - 1) & !(align - 1))
     }
 
     pub fn is_page_aligned(&self) -> bool {
@@ -46,7 +50,15 @@ impl VirtualAddress {
     }
 
     pub fn page_align(&self) -> Self {
-        Self(self.0 & !(4096 - 1))
+        Self(self.0 & !(PAGE_SIZE - 1))
+    }
+
+    pub fn align_up(&self, align: usize) -> Self {
+        Self((self.0 + align - 1) & !(align - 1))
+    }
+
+    pub fn align_down(&self, align: usize) -> Self {
+        Self(self.0 & !(align - 1))
     }
 
     pub fn is_page_aligned(&self) -> bool {
