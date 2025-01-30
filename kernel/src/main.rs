@@ -13,11 +13,11 @@ use core::arch::asm;
 use arch::x86::interrupts::LAPIC;
 use limine::request::{RequestsEndMarker, RequestsStartMarker, SmpRequest};
 use limine::BaseRevision;
-use log::{debug, error, info};
+use log::error;
 use output::logger;
 use sched::task::Task;
 use sched::TASKS;
-use x86_64::instructions::interrupts::{disable, enable, software_interrupt};
+use x86_64::instructions::interrupts::{disable, enable};
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.

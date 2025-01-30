@@ -1,4 +1,6 @@
+use crate::arch::end_of_interrupt;
 use crate::arch::x86::interrupts::{ERROR_VECTOR, LAPIC, SPURIOUS_VECTOR, TIMER_VECTOR};
+use crate::interrupt;
 use crate::sched::tick;
 use lazy_static::lazy_static;
 use log::{debug, info};
@@ -48,6 +50,11 @@ lazy_static! {
         idt
     };
 }
+
+interrupt!(timer_interrupt_handler, |interrupt_stack| {
+    end_of_interrupt();
+    tick(interrupt_stack);
+});
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -211,13 +218,6 @@ extern "x86-interrupt" fn cp_protection_handler(stack_frame: InterruptStackFrame
 }
 
 // LAPIC handlers
-extern "x86-interrupt" fn timer_interrupt_handler(frame: InterruptStackFrame) {
-    unsafe {
-        tick(&frame);
-        LAPIC.lock().as_mut().unwrap().end_of_interrupt();
-    }
-}
-
 extern "x86-interrupt" fn error_interrupt_handler(_frame: InterruptStackFrame) {
     debug!("Handling error");
     info!("Error interrupt");

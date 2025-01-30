@@ -6,7 +6,7 @@ use pid::Pid;
 use spinning_top::Spinlock;
 use task::Task;
 
-use crate::arch::{end_of_interrupt, InterruptStackFrame};
+use crate::arch::x86::structures::Registers;
 
 pub mod memory;
 pub mod pid;
@@ -27,7 +27,7 @@ pub static mut CURRENT_PID: Option<Pid> = None;
 static mut CONTEXT_SWITCH_LOCK: bool = false;
 static mut TICKS: u8 = 0;
 
-pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
+pub unsafe fn tick(stack_frame: &Registers) {
     TICKS += 1;
 
     if TICKS % 10 != 0 {
@@ -79,7 +79,7 @@ pub unsafe fn tick(stack_frame: &InterruptStackFrame) {
     }
 }
 
-pub unsafe fn switch_to(next_pid: Pid, stack_frame: &InterruptStackFrame) {
+pub unsafe fn switch_to(next_pid: Pid, stack_frame: &Registers) {
     CONTEXT_SWITCH_LOCK = true;
     if let Some(prev_pid) = CURRENT_PID {
         let prev_task = TASKS.get_mut(&prev_pid).unwrap();
@@ -90,7 +90,6 @@ pub unsafe fn switch_to(next_pid: Pid, stack_frame: &InterruptStackFrame) {
     CONTEXT_SWITCH_LOCK = false;
 
     CURRENT_PID.replace(next_pid);
-    end_of_interrupt();
     next_task.restore();
 }
 
@@ -106,7 +105,6 @@ pub unsafe fn remove_current_task() {
             CURRENT_PID = Some(next_pid);
             let next_task = TASKS.get(&next_pid).expect("Next task should exist");
             debug!("Switching to task {} after exit", next_pid);
-            end_of_interrupt();
             next_task.restore();
         } else {
             CURRENT_PID = None;
