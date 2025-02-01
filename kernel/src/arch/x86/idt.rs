@@ -1,7 +1,7 @@
 use crate::arch::end_of_interrupt;
 use crate::arch::x86::interrupts::{ERROR_VECTOR, LAPIC, SPURIOUS_VECTOR, TIMER_VECTOR};
 use crate::interrupt;
-use crate::sched::tick;
+use crate::sched::scheduler::tick;
 use lazy_static::lazy_static;
 use log::{debug, info};
 use spinning_top::Spinlock;

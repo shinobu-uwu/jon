@@ -15,8 +15,8 @@ use limine::request::{RequestsEndMarker, RequestsStartMarker, SmpRequest};
 use limine::BaseRevision;
 use log::error;
 use output::logger;
+use sched::scheduler::add_task;
 use sched::task::Task;
-use sched::TASKS;
 use x86_64::instructions::interrupts::{disable, enable};
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -48,14 +48,12 @@ unsafe extern "C" fn kmain() -> ! {
     arch::init();
     syscall::init();
 
-    disable();
-
-    let task = Task::new(include_bytes!("./bin/test"));
-    TASKS.insert(task.pid, task);
-    let task = Task::new(include_bytes!("./bin/test"));
-    TASKS.insert(task.pid, task);
-
     enable();
+
+    for _ in 0..100 {
+        let task = Task::new(include_bytes!("./bin/test"));
+        add_task(task);
+    }
 
     hcf();
 }

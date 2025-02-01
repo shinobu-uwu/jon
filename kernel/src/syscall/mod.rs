@@ -1,6 +1,6 @@
 use core::arch::{asm, naked_asm};
 
-use crate::{arch::x86::gdt::GDT, sched::remove_current_task};
+use crate::{arch::x86::gdt::GDT, sched::scheduler::remove_current_task};
 use log::{debug, info};
 use x86_64::{
     registers::{
