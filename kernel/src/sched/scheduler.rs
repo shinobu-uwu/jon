@@ -50,75 +50,101 @@ impl PriorityQueues {
 
 pub unsafe fn tick(stack_frame: &Registers) {
     if CURRENT_PID.is_none() && TASKS.is_empty() {
-        debug!("No current task");
+        debug!("No tasks to run, halting");
         return;
     }
 
     let current_pid = CURRENT_PID;
     let next_pid = {
         let tasks = &mut TASKS;
-        let current_pid = CURRENT_PID;
         let queues = &mut QUEUES;
 
-        if let Some(pid) = current_pid {
-            let current_task = tasks.get_mut(&pid).unwrap();
+        match current_pid {
+            Some(pid) => {
+                let current_task = tasks.get_mut(&pid).unwrap();
+                current_task.quantum += 1;
 
-            current_task.quantum += 1;
+                let quantum_limit = match current_task.priority {
+                    Priority::High => QUANTUM_BASE + HIGH_PRIORITY_BONUS,
+                    Priority::Normal => QUANTUM_BASE,
+                    Priority::Low => QUANTUM_BASE - LOW_PRIORITY_PENALTY,
+                };
 
-            let quantum_limit = match current_task.priority {
-                Priority::High => QUANTUM_BASE + HIGH_PRIORITY_BONUS,
-                Priority::Normal => QUANTUM_BASE,
-                Priority::Low => QUANTUM_BASE - LOW_PRIORITY_PENALTY,
-            };
-
-            if current_task.quantum >= quantum_limit {
-                current_task.quantum = 0;
-
-                if let State::Running = current_task.state {
-                    queues.add_task(pid, current_task.priority);
+                if current_task.quantum >= quantum_limit {
+                    current_task.quantum = 0;
+                    if let State::Running = current_task.state {
+                        queues.add_task(pid, current_task.priority);
+                    }
+                    queues.get_next_task()
+                } else {
+                    None
                 }
-
-                let next_pid = queues.get_next_task();
-                next_pid
-            } else {
-                Some(pid)
             }
-        } else {
-            let next_pid = queues.get_next_task();
-            next_pid
+            None => queues.get_next_task(),
         }
     };
 
-    match next_pid {
-        Some(p) => unsafe {
-            let prev_context = &mut TASKS.get_mut(&current_pid.unwrap()).unwrap().context;
-            let next_context = &TASKS.get(&p).unwrap().context;
-            debug!("Switching from task {} to task {}", current_pid.unwrap(), p);
-            debug!("Queues len: {}", QUEUES.normal.len());
-            arch::switch_to(prev_context, &next_context, stack_frame);
-        },
-        None => return,
+    match (next_pid, current_pid) {
+        (Some(next), Some(current)) => {
+            let prev_task = TASKS.get_mut(&current).unwrap();
+            let next_task = TASKS.get_mut(&next).unwrap();
+            debug!("Switching from task {} to task {}", current, next);
+
+            prev_task.state = State::Waiting;
+            next_task.state = State::Running;
+
+            CURRENT_PID = Some(next);
+            arch::switch_to(&mut prev_task.context, &next_task.context, stack_frame);
+        }
+        (Some(next), None) => {
+            let next_task = TASKS.get_mut(&next).unwrap();
+            debug!("Switching to task {}", next);
+
+            next_task.state = State::Running;
+
+            CURRENT_PID = Some(next);
+            arch::switch_to(&mut Registers::default(), &next_task.context, stack_frame);
+        }
+        _ => {}
     }
 }
 
 pub fn add_task(task: Task) {
     unsafe {
         let pid = task.pid;
+        debug!("Adding task {}", pid);
         QUEUES.add_task(pid, task.priority);
         TASKS.insert(pid, task);
-
-        if CURRENT_PID.is_none() {
-            CURRENT_PID = Some(pid);
-        }
     }
 }
 
 pub fn remove_current_task() {
     unsafe {
         if let Some(pid) = CURRENT_PID {
-            TASKS.remove(&pid).unwrap();
+            remove_task(pid);
+        }
+    }
+}
+
+pub fn remove_task(pid: Pid) {
+    unsafe {
+        debug!("Removing task {}", pid);
+        let task = match (TASKS.remove(&pid)) {
+            Some(task) => task,
+            None => {
+                debug!("Task {} not found", pid);
+                return;
+            }
+        };
+
+        match task.priority {
+            Priority::High => QUEUES.high.retain(|&p| p != pid),
+            Priority::Normal => QUEUES.normal.retain(|&p| p != pid),
+            Priority::Low => QUEUES.low.retain(|&p| p != pid),
         }
 
-        CURRENT_PID = None;
+        if CURRENT_PID == Some(pid) {
+            CURRENT_PID = None;
+        }
     }
 }

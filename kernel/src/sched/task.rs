@@ -66,7 +66,7 @@ impl Task {
             pid,
             kernel_stack,
             context,
-            state: State::Running,
+            state: State::Waiting,
             memory_descriptor,
             quantum: 0,
             priority: Priority::Normal,

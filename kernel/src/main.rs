@@ -49,7 +49,7 @@ unsafe extern "C" fn kmain() -> ! {
     syscall::init();
 
     disable();
-    for _ in 0..100 {
+    for _ in 0..10 {
         let task = Task::new(include_bytes!("./bin/test"));
         add_task(task);
     }
