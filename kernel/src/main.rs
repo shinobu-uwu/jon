@@ -48,12 +48,12 @@ unsafe extern "C" fn kmain() -> ! {
     arch::init();
     syscall::init();
 
-    enable();
-
+    disable();
     for _ in 0..100 {
         let task = Task::new(include_bytes!("./bin/test"));
         add_task(task);
     }
+    enable();
 
     hcf();
 }
@@ -62,9 +62,7 @@ unsafe extern "C" fn kmain() -> ! {
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     error!("{}", info);
     // TODO Move this to x86 specific panic_impl
-    unsafe {
-        LAPIC.lock().as_mut().unwrap().disable();
-    }
+    disable();
     hcf();
 }
 

@@ -16,6 +16,7 @@ const QUANTUM_BASE: u64 = 10;
 const HIGH_PRIORITY_BONUS: u64 = 15;
 const LOW_PRIORITY_PENALTY: u64 = 5;
 
+#[derive(Debug)]
 pub struct PriorityQueues {
     high: VecDeque<Pid>,
     normal: VecDeque<Pid>,
@@ -92,6 +93,8 @@ pub unsafe fn tick(stack_frame: &Registers) {
         Some(p) => unsafe {
             let prev_context = &mut TASKS.get_mut(&current_pid.unwrap()).unwrap().context;
             let next_context = &TASKS.get(&p).unwrap().context;
+            debug!("Switching from task {} to task {}", current_pid.unwrap(), p);
+            debug!("Queues len: {}", QUEUES.normal.len());
             arch::switch_to(prev_context, &next_context, stack_frame);
         },
         None => return,
