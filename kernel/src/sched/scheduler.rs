@@ -9,44 +9,12 @@ use super::{
 };
 
 static mut TASKS: BTreeMap<Pid, Task> = BTreeMap::new();
-static mut QUEUES: PriorityQueues = PriorityQueues::new();
+static mut QUEUE: VecDeque<Pid> = VecDeque::new();
 static mut CURRENT_PID: Option<Pid> = None;
 
 const QUANTUM_BASE: u64 = 10;
 const HIGH_PRIORITY_BONUS: u64 = 15;
 const LOW_PRIORITY_PENALTY: u64 = 5;
-
-#[derive(Debug)]
-pub struct PriorityQueues {
-    high: VecDeque<Pid>,
-    normal: VecDeque<Pid>,
-    low: VecDeque<Pid>,
-}
-
-impl PriorityQueues {
-    pub const fn new() -> Self {
-        Self {
-            high: VecDeque::new(),
-            normal: VecDeque::new(),
-            low: VecDeque::new(),
-        }
-    }
-
-    fn get_next_task(&mut self) -> Option<Pid> {
-        self.high
-            .pop_front()
-            .or_else(|| self.normal.pop_front())
-            .or_else(|| self.low.pop_front())
-    }
-
-    pub fn add_task(&mut self, pid: Pid, priority: Priority) {
-        match priority {
-            Priority::High => self.high.push_back(pid),
-            Priority::Normal => self.normal.push_back(pid),
-            Priority::Low => self.low.push_back(pid),
-        }
-    }
-}
 
 pub unsafe fn tick(stack_frame: &Registers) {
     if CURRENT_PID.is_none() && TASKS.is_empty() {
@@ -57,7 +25,7 @@ pub unsafe fn tick(stack_frame: &Registers) {
     let current_pid = CURRENT_PID;
     let next_pid = {
         let tasks = &mut TASKS;
-        let queues = &mut QUEUES;
+        let queue = &mut QUEUE;
 
         match current_pid {
             Some(pid) => {
@@ -73,14 +41,14 @@ pub unsafe fn tick(stack_frame: &Registers) {
                 if current_task.quantum >= quantum_limit {
                     current_task.quantum = 0;
                     if let State::Running = current_task.state {
-                        queues.add_task(pid, current_task.priority);
+                        queue.push_back(pid);
                     }
-                    queues.get_next_task()
+                    queue.pop_front()
                 } else {
                     None
                 }
             }
-            None => queues.get_next_task(),
+            None => queue.pop_front(),
         }
     };
 
@@ -113,7 +81,7 @@ pub fn add_task(task: Task) {
     unsafe {
         let pid = task.pid;
         debug!("Adding task {}", pid);
-        QUEUES.add_task(pid, task.priority);
+        QUEUE.push_back(pid);
         TASKS.insert(pid, task);
     }
 }
@@ -129,19 +97,13 @@ pub fn remove_current_task() {
 pub fn remove_task(pid: Pid) {
     unsafe {
         debug!("Removing task {}", pid);
-        let task = match (TASKS.remove(&pid)) {
-            Some(task) => task,
-            None => {
-                debug!("Task {} not found", pid);
-                return;
-            }
-        };
 
-        match task.priority {
-            Priority::High => QUEUES.high.retain(|&p| p != pid),
-            Priority::Normal => QUEUES.normal.retain(|&p| p != pid),
-            Priority::Low => QUEUES.low.retain(|&p| p != pid),
+        if TASKS.remove(&pid).is_none() {
+            debug!("Task {} not found", pid);
+            return;
         }
+
+        QUEUE.retain(|&p| p != pid);
 
         if CURRENT_PID == Some(pid) {
             CURRENT_PID = None;

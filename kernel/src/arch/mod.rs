@@ -1,4 +1,5 @@
 use x86::{interrupts::LAPIC, structures::Registers};
+use x86_64::instructions::interrupts::disable;
 
 #[cfg(target_arch = "x86_64")]
 pub mod x86;
@@ -20,4 +21,8 @@ pub unsafe fn switch_to(
 ) {
     #[cfg(target_arch = "x86_64")]
     x86::switch_to(prev_context, next_context, current_stack_frame);
+}
+
+pub fn panic(_info: &core::panic::PanicInfo) {
+    disable();
 }

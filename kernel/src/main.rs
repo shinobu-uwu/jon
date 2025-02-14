@@ -16,7 +16,7 @@ use limine::BaseRevision;
 use log::error;
 use output::logger;
 use sched::scheduler::add_task;
-use sched::task::Task;
+use sched::task::{Priority, Task};
 use x86_64::instructions::interrupts::{disable, enable};
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -47,12 +47,6 @@ unsafe extern "C" fn kmain() -> ! {
     logger::init().unwrap();
     arch::init();
     syscall::init();
-
-    disable();
-    for _ in 0..10 {
-        let task = Task::new(include_bytes!("./bin/test"));
-        add_task(task);
-    }
     enable();
 
     hcf();
@@ -61,8 +55,7 @@ unsafe extern "C" fn kmain() -> ! {
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     error!("{}", info);
-    // TODO Move this to x86 specific panic_impl
-    disable();
+    arch::panic(info);
     hcf();
 }
 

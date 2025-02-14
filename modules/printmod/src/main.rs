@@ -8,5 +8,6 @@ module_entrypoint!("printmod", "A simple kernel module", "1.0.0", main);
 fn main() -> Result<(), ExitCode> {
     println!("Hello, world!");
 
+    loop {}
     Ok(())
 }
