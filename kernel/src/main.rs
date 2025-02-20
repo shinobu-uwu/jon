@@ -10,14 +10,11 @@ mod syscall;
 
 use core::arch::asm;
 
-use arch::x86::interrupts::LAPIC;
 use limine::request::{RequestsEndMarker, RequestsStartMarker, SmpRequest};
 use limine::BaseRevision;
 use log::error;
 use output::logger;
-use sched::scheduler::add_task;
-use sched::task::{Priority, Task};
-use x86_64::instructions::interrupts::{disable, enable};
+use x86_64::instructions::interrupts::enable;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.

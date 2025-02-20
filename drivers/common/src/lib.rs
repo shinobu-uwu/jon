@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod framebuffer;
+
 use core::arch::asm;
 
 #[derive(Debug)]

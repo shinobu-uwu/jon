@@ -7,7 +7,7 @@ name = "jon_common"
 version = "0.1.0"
 
 [[package]]
-name = "printmod"
+name = "terminal"
 version = "0.1.0"
 dependencies = [
  "jon_common",
