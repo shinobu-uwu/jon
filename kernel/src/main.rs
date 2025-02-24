@@ -3,6 +3,7 @@
 #![feature(abi_x86_interrupt, naked_functions, fn_align)]
 
 mod arch;
+mod fd;
 mod memory;
 mod output;
 mod sched;

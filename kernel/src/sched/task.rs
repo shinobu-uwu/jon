@@ -1,5 +1,3 @@
-use core::arch::asm;
-
 use bitmap_allocator::BitAlloc;
 use log::debug;
 
