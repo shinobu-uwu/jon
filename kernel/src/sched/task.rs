@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use bitmap_allocator::BitAlloc;
 use log::debug;
 
@@ -20,10 +21,12 @@ const STACK_SIZE: usize = 0x4000; // 16 KiB
 #[derive(Debug)]
 pub struct Task {
     pub pid: Pid,
+    pub parent: Option<Pid>,
     pub state: State,
     pub quantum: u64,
     pub priority: Priority,
     pub context: Registers,
+    pub fds: Vec<FileDescriptor>,
     kernel_stack: Stack,
     memory_descriptor: MemoryDescriptor,
 }
@@ -62,12 +65,14 @@ impl Task {
 
         Self {
             pid,
+            parent: None,
             kernel_stack,
             context,
             state: State::Waiting,
             memory_descriptor,
             quantum: 0,
             priority: Priority::Normal,
+            fds: Vec::new(),
         }
     }
 }

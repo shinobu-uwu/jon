@@ -2,6 +2,7 @@ use bitmap_allocator::{BitAlloc, BitAlloc64K};
 use lazy_static::lazy_static;
 use spinning_top::Spinlock;
 
+pub mod fd;
 pub mod memory;
 pub mod pid;
 pub mod scheduler;
