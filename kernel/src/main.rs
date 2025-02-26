@@ -6,6 +6,7 @@ mod arch;
 mod memory;
 mod output;
 mod sched;
+mod scheme;
 mod syscall;
 
 use core::arch::asm;
