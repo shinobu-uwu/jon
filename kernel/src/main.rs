@@ -5,6 +5,7 @@
 mod arch;
 mod memory;
 mod output;
+mod path;
 mod sched;
 mod scheme;
 mod syscall;
