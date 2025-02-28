@@ -1,18 +1,22 @@
-pub mod operations;
-
 use bitflags::bitflags;
 
+use crate::scheme::SchemeId;
+
 /// A file descriptor
+#[derive(Debug, Clone)]
 pub struct FileDescriptor {
     /// The file descriptor number
-    pub id: FileDescritorId,
+    pub id: FileDescriptorId,
     /// The file descriptor offset, used for seeking
     pub offset: usize,
+    /// The scheme that the descriptor belongs to
+    pub scheme: SchemeId,
     /// The file descriptor flags
     pub flags: FileDescriptorFlags,
 }
 
-pub struct FileDescritorId(usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FileDescriptorId(pub usize);
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

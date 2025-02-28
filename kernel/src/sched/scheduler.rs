@@ -110,3 +110,19 @@ pub fn remove_task(pid: Pid) {
         }
     }
 }
+
+pub fn current_pid() -> Option<Pid> {
+    unsafe { CURRENT_PID }
+}
+
+pub fn current_task() -> Option<&'static Task> {
+    unsafe { TASKS.get(&CURRENT_PID?) }
+}
+
+pub fn get_task(pid: Pid) -> Option<&'static Task> {
+    unsafe { TASKS.get(&pid) }
+}
+
+pub fn get_task_mut(pid: Pid) -> Option<&'static mut Task> {
+    unsafe { TASKS.get_mut(&pid) }
+}

@@ -13,7 +13,10 @@ use crate::{
     sched::{pid::Pid, PID_ALLOCATOR},
 };
 
-use super::memory::MemoryDescriptor;
+use super::{
+    fd::{FileDescriptor, FileDescriptorFlags, FileDescriptorId},
+    memory::MemoryDescriptor,
+};
 
 const STACK_START: usize = 0xffff888000000000;
 const STACK_SIZE: usize = 0x4000; // 16 KiB
@@ -27,6 +30,7 @@ pub struct Task {
     pub priority: Priority,
     pub context: Registers,
     pub fds: Vec<FileDescriptor>,
+    next_fd: usize,
     kernel_stack: Stack,
     memory_descriptor: MemoryDescriptor,
 }
@@ -73,7 +77,12 @@ impl Task {
             quantum: 0,
             priority: Priority::Normal,
             fds: Vec::new(),
+            next_fd: 1,
         }
+    }
+
+    pub fn add_file(&mut self, descriptor: FileDescriptor) {
+        self.fds.push(descriptor);
     }
 }
 
