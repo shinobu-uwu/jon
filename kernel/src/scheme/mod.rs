@@ -17,7 +17,7 @@ lazy_static! {
         let mut list = SchemeList::new();
         debug!("Adding VGA scheme");
         let vga = VgaScheme::new();
-        list.schemes.insert(SchemeId(1), Arc::new(vga));
+        list.add("vga", Arc::new(vga));
         RwSpinlock::new(list)
     };
 }
@@ -59,7 +59,7 @@ impl SchemeList {
         Self {
             schemes: HashMap::new(),
             names: HashMap::new(),
-            next_id: 0,
+            next_id: 1,
         }
     }
 
@@ -74,6 +74,16 @@ impl SchemeList {
         let scheme = self.schemes.get(id)?;
 
         Some((*id, Arc::clone(scheme)))
+    }
+
+    pub fn add(&mut self, name: &str, scheme: Arc<dyn KernelScheme>) -> SchemeId {
+        let id = SchemeId(self.next_id);
+        self.next_id += 1;
+
+        self.schemes.insert(id, scheme);
+        self.names.insert(name.into(), id);
+
+        id
     }
 }
 

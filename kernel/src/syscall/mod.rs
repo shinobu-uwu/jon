@@ -19,8 +19,12 @@ use x86_64::{
     VirtAddr,
 };
 
-static SYSCALLS: &[Option<fn(usize, usize, usize, usize, usize, usize) -> usize>] =
-    &[Some(sys_exit), Some(sys_print), Some(sys_open)];
+static SYSCALLS: &[Option<fn(usize, usize, usize, usize, usize, usize) -> usize>] = &[
+    Some(sys_exit),
+    Some(sys_print),
+    Some(sys_open),
+    Some(sys_read),
+];
 
 pub(super) fn init() {
     // Enable syscall/sysret
@@ -118,16 +122,27 @@ fn handle_syscall() -> usize {
 
     debug!("Syscall {} received", syscall_number);
 
-    match SYSCALLS.get(syscall_number) {
+    let result = match SYSCALLS.get(syscall_number) {
         Some(Some(syscall)) => {
             debug!("Calling syscall: {}", syscall_number);
-            syscall(arg1, arg2, arg3, arg4, arg5, arg6)
+            let ret = syscall(arg1, arg2, arg3, arg4, arg5, arg6);
+            debug!("Returning {} from syscall {}", ret, syscall_number);
+            ret
         }
         _ => {
             debug!("Invalid syscall number: {}", syscall_number);
             usize::MAX
         }
+    };
+
+    unsafe {
+        asm!(
+            "mov rax, {}",
+            in(reg) result,
+        );
     }
+
+    result
 }
 
 fn sys_print(string_ptr: usize, length: usize, _: usize, _: usize, _: usize, _: usize) -> usize {
@@ -151,6 +166,9 @@ fn sys_exit(code: usize, _: usize, _: usize, _: usize, _: usize, _: usize) -> us
 }
 
 fn sys_open(path_ptr: usize, path_len: usize, flags: usize, _: usize, _: usize, _: usize) -> usize {
+    debug!("Opening file");
+    debug!("Path pointer: {:#x?}", path_ptr);
+    debug!("Path length: {}", path_len);
     let path = unsafe {
         let slice = core::slice::from_raw_parts(path_ptr as *const u8, path_len);
         let str = core::str::from_utf8_unchecked(slice);
@@ -163,7 +181,6 @@ fn sys_open(path_ptr: usize, path_len: usize, flags: usize, _: usize, _: usize, 
 
     let scheme = schemes();
     if let Some((id, scheme)) = scheme.get_name(scheme_name) {
-        // Use the scheme to open the file/device
         let caller_context = CallerContext {
             pid: current_pid().expect("ERR: NO CURRENT PID"),
             scheme: id,
@@ -172,16 +189,35 @@ fn sys_open(path_ptr: usize, path_len: usize, flags: usize, _: usize, _: usize, 
         match scheme.open(path.path, flags, caller_context) {
             Ok(fd_id) => {
                 debug!("Opened file descriptor: {:?}", fd_id);
-                fd_id.0 // Return the file descriptor ID
+                fd_id.0
             }
             Err(err) => {
                 debug!("Error opening file: {}", err);
-                usize::MAX // Return an error code (usually -1, but here using usize::MAX)
+                usize::MAX
             }
         }
     } else {
         debug!("No scheme found for: {}", scheme_name);
-        usize::MAX // Return an error code
+        usize::MAX
+    }
+}
+
+fn sys_read(fd: usize, buf_ptr: usize, count: usize, _: usize, _: usize, _: usize) -> usize {
+    let task = current_task().expect("ERROR: NO CURRENT TASK");
+    let fd = task
+        .fds
+        .iter()
+        .find(|desc| desc.id == FileDescriptorId(fd))
+        .expect("ERROR: FD NOT FOUND IN TASK");
+    let schemes = schemes();
+    let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
+    debug!("Reading from fd: {:?}", fd);
+    debug!("Reading into buffer: {:#x?}", buf_ptr);
+    debug!("Reading count: {}", count);
+    let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr as *mut u8, count) };
+    match scheme.read(fd.id, buf, count) {
+        Ok(n) => n,
+        Err(_) => usize::MAX,
     }
 }
 

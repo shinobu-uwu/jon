@@ -21,7 +21,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 #[inline(always)]
-unsafe extern "sysv64" fn syscall(
+pub unsafe extern "sysv64" fn syscall(
     number: usize,
     arg1: usize,
     arg2: usize,

@@ -4,8 +4,7 @@ use core::{
 };
 
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
-use libc::{EINVAL, ENOENT};
-use limine::{framebuffer::Framebuffer, request::FramebufferRequest};
+use limine::request::FramebufferRequest;
 use spinning_top::RwSpinlock;
 
 use crate::sched::{
@@ -26,13 +25,22 @@ static NEXT_FD: AtomicUsize = AtomicUsize::new(1);
 struct FramebufferIndex(usize);
 
 pub struct VgaScheme {
-    pub framebuffers: Arc<RwSpinlock<Vec<Framebuffer<'static>>>>,
+    pub framebuffers: Arc<RwSpinlock<Vec<&'static mut [u8]>>>,
 }
 
 impl VgaScheme {
     pub fn new() -> Self {
         let res = FRAMEBUFFER_REQUEST.get_response().unwrap();
-        let fbs = res.framebuffers().into_iter().collect();
+        let fbs = res
+            .framebuffers()
+            .into_iter()
+            .map(|fb| unsafe {
+                core::slice::from_raw_parts_mut(
+                    fb.addr() as *mut u8,
+                    (fb.width() * fb.height() * fb.bpp() as u64 / 8) as usize,
+                )
+            })
+            .collect();
         Self {
             framebuffers: Arc::new(RwSpinlock::new(fbs)),
         }
@@ -42,9 +50,9 @@ impl VgaScheme {
 impl KernelScheme for VgaScheme {
     fn open(&self, path: &str, _flags: usize, ctx: CallerContext) -> Result<FileDescriptorId, i32> {
         let n = &path[2..];
-        let index: usize = n.parse().map_err(|_| EINVAL)?;
-        let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;
-        self.framebuffers.clone().read().get(index).ok_or(ENOENT)?;
+        let index: usize = n.parse().map_err(|_| 0x16)?;
+        let task = get_task_mut(ctx.pid).ok_or(0x16)?;
+        self.framebuffers.clone().read().get(index).ok_or(2)?;
 
         let id = FileDescriptorId(NEXT_FD.fetch_add(1, atomic::Ordering::Relaxed));
         task.add_file(crate::sched::fd::FileDescriptor {
@@ -64,7 +72,20 @@ impl KernelScheme for VgaScheme {
         buf: &mut [u8],
         count: usize,
     ) -> Result<usize, i32> {
-        todo!()
+        let descriptors = DESCRIPTORS.read();
+        let framebuffer_index = descriptors.get(&descriptor_id).ok_or(0x16)?;
+
+        let framebuffers = self.framebuffers.read();
+        let framebuffer = framebuffers.get(framebuffer_index.0).ok_or(2)?;
+
+        let framebuffer_size = framebuffer.len();
+        let bytes_to_read = count.min(framebuffer_size);
+
+        unsafe {
+            copy_nonoverlapping(framebuffer.as_ptr(), buf.as_mut_ptr(), bytes_to_read);
+        }
+
+        Ok(bytes_to_read)
     }
 
     fn write(
@@ -73,23 +94,20 @@ impl KernelScheme for VgaScheme {
         buf: &[u8],
         count: usize,
     ) -> Result<usize, i32> {
-        // Fetch the framebuffer index using the descriptor
+        todo!();
         let descriptors = DESCRIPTORS.read();
-        let framebuffer_index = descriptors.get(&descriptor_id).ok_or(EINVAL)?;
+        let framebuffer_index = descriptors.get(&descriptor_id).ok_or(0x16)?;
 
-        // Get the framebuffer from the framebuffers list
         let framebuffers = self.framebuffers.read();
-        let framebuffer = framebuffers.get(framebuffer_index.0).ok_or(ENOENT)?;
+        let framebuffer = framebuffers.get(framebuffer_index.0).ok_or(2)?;
 
-        // Write the buffer to the framebuffer
         let framebuffer_size = framebuffer.len();
-        let bytes_to_write = count.min(framebuffer_size); // Limit the number of bytes to write
+        let bytes_to_write = count.min(framebuffer_size);
 
         unsafe {
             copy_nonoverlapping(buf.as_ptr(), framebuffer.as_mut_ptr(), bytes_to_write);
         }
 
-        // Return the number of bytes written
         Ok(bytes_to_write)
     }
 
