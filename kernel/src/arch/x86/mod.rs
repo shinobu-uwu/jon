@@ -1,5 +1,6 @@
 use core::arch::asm;
 
+use log::debug;
 use structures::Registers;
 
 pub mod gdt;
@@ -15,15 +16,13 @@ pub fn init() {
     interrupts::init();
 }
 
-pub fn switch_to(
+pub unsafe fn switch_to(
     prev_context: &mut Registers,
     next_context: &Registers,
     current_stack_frame: &Registers,
 ) {
-    unsafe {
-        save(prev_context, current_stack_frame);
-        restore(next_context);
-    }
+    save(prev_context, current_stack_frame);
+    restore(next_context);
 }
 
 pub unsafe fn save(context: &mut Registers, stack_frame: &Registers) {
@@ -52,36 +51,51 @@ pub unsafe fn save(context: &mut Registers, stack_frame: &Registers) {
 // IMPORTANT: any acquired locks, or anything you must do before switching tasks,
 // must be released or done here, after this the kernel will jump to the task's instruction pointer
 unsafe fn restore(context: &Registers) -> ! {
+    debug!("Context: {:#x?}", context);
     const PRESERVED_OFFSET: u8 = 0x48;
+    const SCRATCH_OFFSET: u8 = 0x00;
     const IRET_OFFSET: u8 = 0x78;
     const SS_OFFSET: u8 = IRET_OFFSET + 0x20;
     asm!(
-        "mov ds, [{context} + {ss_offset}]",
-        "mov es, [{context} + {ss_offset}]",
-        "mov fs, [{context} + {ss_offset}]",
-        "mov gs, [{context} + {ss_offset}]", // SS is handled by iret
 
-        // setup the stack frame iret expects
-        "push [{context} + {ss_offset}]", // data selector
-        "push [{context} + {iret_offset} + 0x18]", // stack pointer
-        "push [{context} + {iret_offset} + 0x10]", // rflags
-        "push [{context} + {iret_offset} + 0x8]", // code selector
-        "push [{context} + {iret_offset}]", // instruction pointer
+        // Segment registers
+        "mov ds, [r12 + {ss_offset}]",
+        "mov es, [r12 + {ss_offset}]",
+        "mov fs, [r12 + {ss_offset}]",
+        "mov gs, [r12 + {ss_offset}]",
 
-        // restore preserved registers
-        "mov r15, [{context} + {preserved_offset}]",
-        "mov r14, [{context} + {preserved_offset} + 0x8]",
-        "mov r13, [{context} + {preserved_offset} + 0x10]",
-        "mov r12, [{context} + {preserved_offset} + 0x18]",
-        "mov rbp, [{context} + {preserved_offset} + 0x20]",
-        "mov rbx, [{context} + {preserved_offset} + 0x28]",
+        // Setup iret stack frame first before we touch any registers
+        "push [r12 + {ss_offset}]",          // SS
+        "push [r12 + {iret_offset} + 0x18]", // RSP
+        "push [r12 + {iret_offset} + 0x10]", // RFLAGS
+        "push [r12 + {iret_offset} + 0x8]",  // CS
+        "push [r12 + {iret_offset}]",        // RIP
 
-        // scratch registers are caller-saved, so they don't need to be restored
+        // Restore scratch registers
+        "mov rax, [r12 + {scratch_offset}]",
+        "mov rcx, [r12 + {scratch_offset} + 0x8]",
+        "mov rdx, [r12 + {scratch_offset} + 0x10]",
+        "mov rdi, [r12 + {scratch_offset} + 0x18]",
+        "mov rsi, [r12 + {scratch_offset} + 0x20]",
+        "mov r8,  [r12 + {scratch_offset} + 0x28]",
+        "mov r9,  [r12 + {scratch_offset} + 0x30]",
+        "mov r10, [r12 + {scratch_offset} + 0x38]",
+        "mov r11, [r12 + {scratch_offset} + 0x40]",
+
+        // Restore preserved registers LAST
+        // We're using r12 as a temporary, so restore it last
+        "mov r15, [r12 + {preserved_offset}]",
+        "mov r14, [r12 + {preserved_offset} + 0x8]",
+        "mov r13, [r12 + {preserved_offset} + 0x10]",
+        "mov rbp, [r12 + {preserved_offset} + 0x20]",
+        "mov rbx, [r12 + {preserved_offset} + 0x28]",
+        "mov r12, [r12 + {preserved_offset} + 0x18]", // Restore r12 last
 
         "iretq",
-        context = in(reg) context,
+        in("r12") context,
         ss_offset = const SS_OFFSET,
         preserved_offset = const PRESERVED_OFFSET,
+        scratch_offset = const SCRATCH_OFFSET,
         iret_offset = const IRET_OFFSET,
         options(noreturn)
     );

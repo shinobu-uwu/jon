@@ -84,14 +84,6 @@ macro_rules! println {
 macro_rules! module_entrypoint {
     ($name:expr, $description:expr, $version:expr, $entrypoint:ident) => {
         #[no_mangle]
-        #[link_section = ".module_info"]
-        static MODULE_INFO: $crate::ModuleInfo = $crate::ModuleInfo {
-            name: $name,
-            description: $description,
-            version: $version,
-        };
-
-        #[no_mangle]
         pub extern "C" fn _start() -> ! {
             let result = $entrypoint();
 
@@ -100,9 +92,7 @@ macro_rules! module_entrypoint {
                 Err(code) => code,
             };
 
-            unsafe {
-                $crate::exit(exit_code);
-            }
+            $crate::exit(exit_code);
         }
     };
 }

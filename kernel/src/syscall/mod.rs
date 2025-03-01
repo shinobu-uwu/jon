@@ -3,12 +3,14 @@ use core::arch::{asm, naked_asm};
 use crate::{
     arch::x86::gdt::GDT,
     path::Path,
+    pop_preserved, pop_scratch, push_preserved, push_scratch,
     sched::{
-        fd::FileDescriptorId,
+        pid::Pid,
         scheduler::{current_pid, current_task, remove_current_task},
     },
     scheme::{schemes, CallerContext},
 };
+use libjon::fd::FileDescriptorId;
 use log::{debug, info};
 use x86_64::{
     registers::{
@@ -18,6 +20,8 @@ use x86_64::{
     },
     VirtAddr,
 };
+
+static mut COUNT: usize = 0;
 
 static SYSCALLS: &[Option<fn(usize, usize, usize, usize, usize, usize) -> usize>] = &[
     Some(sys_exit),
@@ -53,44 +57,50 @@ pub(super) fn init() {
         }
     }
 
-    LStar::write(VirtAddr::new(syscall_handler as u64));
+    LStar::write(VirtAddr::new(syscall_instruction as u64));
     SFMask::write(RFlags::INTERRUPT_FLAG);
 }
 
 #[naked]
-unsafe extern "sysv64" fn syscall_handler() -> ! {
+#[allow(named_asm_labels)]
+pub unsafe extern "C" fn syscall_instruction() {
     naked_asm!(
-        "swapgs",
+        "swapgs;",
 
-        "push rcx",
-        "push r11",
-        "push rax",
-        "push rdi",
-        "push rsi",
-        "push rdx",
-        "push r10",
-        "push r8",
-        "push r9",
+        push_scratch!(),
+        push_preserved!(),
 
-        "call {handler}",
+        "call {handler};",
 
-        "pop r9",
-        "pop r8",
-        "pop r10",
-        "pop rdx",
-        "pop rsi",
-        "pop rdi",
-        "pop rax",
-        "pop r11",
-        "pop rcx",
 
-        "swapgs",
-        "sysretq",
+        ".globl enter_usermode",
+        "enter_usermode:",
+        pop_preserved!(),
+        pop_scratch!(),
+
+        // We must ensure RCX is canonical; if it is not when running sysretq, the consequences can be
+        // fatal from a security perspective.
+        //
+        // See https://xenproject.org/2012/06/13/the-intel-sysret-privilege-escalation/.
+        //
+        // This is not just theoretical; ptrace allows userspace to change RCX (via RIP) of target
+        // processes.
+        //
+        // While we could also conditionally IRETQ here, an easier method is to simply sign-extend RCX:
+
+        // Shift away the upper 16 bits (0xBAAD_8000_DEAD_BEEF => 0x8000_DEAD_BEEF_XXXX).
+        "shl rcx, 16;",
+        // Shift arithmetically right by 16 bits, effectively extending the 47th sign bit to bits
+        // 63:48 (0x8000_DEAD_BEEF_XXXX => 0xFFFF_8000_DEAD_BEEF).
+        "sar rcx, 16;",
+
+        "swapgs;",
+        "sysretq;",                 // Return into userspace; RCX=>RIP,R11=>RFLAGS
         handler = sym handle_syscall,
     );
 }
 
-fn handle_syscall() -> usize {
+pub unsafe extern "C" fn handle_syscall() -> usize {
     let (syscall_number, arg1, arg2, arg3, arg4, arg5, arg6): (
         usize,
         usize,
@@ -101,23 +111,25 @@ fn handle_syscall() -> usize {
         usize,
     );
 
-    unsafe {
-        asm!(
-            "mov {}, rax",
-            "mov {}, rdi",
-            "mov {}, rsi",
-            "mov {}, rdx",
-            "mov {}, r10",
-            "mov {}, r8",
-            "mov {}, r9",
-            out(reg) syscall_number,
-            out(reg) arg1,
-            out(reg) arg2,
-            out(reg) arg3,
-            out(reg) arg4,
-            out(reg) arg5,
-            out(reg) arg6,
-        );
+    asm!(
+        "mov {}, rax",
+        "mov {}, rdi",
+        "mov {}, rsi",
+        "mov {}, rdx",
+        "mov {}, r10",
+        "mov {}, r8",
+        "mov {}, r9",
+        out(reg) syscall_number,
+        out(reg) arg1,
+        out(reg) arg2,
+        out(reg) arg3,
+        out(reg) arg4,
+        out(reg) arg5,
+        out(reg) arg6,
+    );
+
+    if arg1 == 0 {
+        loop {}
     }
 
     debug!("Syscall {} received", syscall_number);
@@ -158,9 +170,7 @@ fn sys_print(string_ptr: usize, length: usize, _: usize, _: usize, _: usize, _: 
 
 fn sys_exit(code: usize, _: usize, _: usize, _: usize, _: usize, _: usize) -> usize {
     debug!("Exiting with code: {}", code);
-    unsafe {
-        remove_current_task();
-    };
+    remove_current_task();
 
     0
 }

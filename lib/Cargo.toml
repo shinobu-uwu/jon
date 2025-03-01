@@ -1,0 +1,15 @@
+[package]
+name = "libjon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bitflags = "2.6.0"
+
+[profile.dev]
+panic = "abort"
+debug = true
+
+[profile.release]
+panic = "abort"
+

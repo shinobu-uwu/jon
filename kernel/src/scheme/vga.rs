@@ -4,13 +4,11 @@ use core::{
 };
 
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
+use libjon::fd::{FileDescriptorFlags, FileDescriptorId};
 use limine::request::FramebufferRequest;
 use spinning_top::RwSpinlock;
 
-use crate::sched::{
-    fd::{FileDescriptorFlags, FileDescriptorId},
-    scheduler::get_task_mut,
-};
+use crate::sched::scheduler::get_task_mut;
 
 use super::{CallerContext, KernelScheme};
 

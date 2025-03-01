@@ -1,7 +1,9 @@
 #![no_std]
 #![no_main]
 
-use jon_common::{ExitCode, module_entrypoint, println, syscall};
+use core::arch::asm;
+
+use jon_common::{ExitCode, module_entrypoint, println};
 
 module_entrypoint!(
     "terminal",
@@ -12,15 +14,20 @@ module_entrypoint!(
 
 fn main() -> Result<(), ExitCode> {
     // let path = "vga:fb0";
-    // println!("Opening: {:?}", path);
-    // let fd = unsafe { syscall(2, path.as_ptr() as usize, path.len(), 0, 0, 0, 0) };
-    // println!("Opened: {:?}", fd);
-    // let buf = [2u8; 1024];
-    // unsafe {
-    //     syscall(3, fd as usize, buf.as_ptr() as usize, buf.len(), 0, 0, 0);
-    // }
+
     loop {
-        println!("Read");
+        println!("{:#x?}", read_rdi());
     }
     Ok(())
+}
+
+fn read_rdi() -> usize {
+    let rdi_value: usize;
+    unsafe {
+        asm!(
+            "mov {}, rdi", // Move the value of rdi into the rdi_value variable
+            out(reg) rdi_value, // Output the value of rdi to the rdi_value variable
+        );
+    }
+    rdi_value
 }

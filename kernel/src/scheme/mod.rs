@@ -1,9 +1,10 @@
 pub mod vga;
 
-use crate::sched::{fd::FileDescriptorId, pid::Pid};
+use crate::sched::pid::Pid;
 use alloc::{boxed::Box, sync::Arc};
 use hashbrown::HashMap;
 use lazy_static::lazy_static;
+use libjon::fd::FileDescriptorId;
 use log::debug;
 use spinning_top::{
     lock_api::{RwLockReadGuard, RwLockWriteGuard},

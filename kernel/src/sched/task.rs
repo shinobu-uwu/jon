@@ -13,10 +13,7 @@ use crate::{
     sched::{pid::Pid, PID_ALLOCATOR},
 };
 
-use super::{
-    fd::{FileDescriptor, FileDescriptorFlags, FileDescriptorId},
-    memory::MemoryDescriptor,
-};
+use super::{fd::FileDescriptor, memory::MemoryDescriptor};
 
 const STACK_START: usize = 0xffff888000000000;
 const STACK_SIZE: usize = 0x4000; // 16 KiB
