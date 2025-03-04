@@ -1,9 +1,21 @@
 use core::fmt::Display;
 
+use alloc::{format, string::String};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Path<'a> {
     pub scheme: &'a str,
     pub path: &'a str,
+}
+
+impl<'a> Path<'a> {
+    pub fn new(scheme: &'a str, path: &'a str) -> Self {
+        Self { scheme, path }
+    }
+
+    pub fn to_string(&self) -> String {
+        format!("{}:{}", self.scheme, self.path)
+    }
 }
 
 impl<'a> From<&'a str> for Path<'a> {

@@ -5,7 +5,6 @@
 mod arch;
 mod memory;
 mod output;
-mod path;
 mod sched;
 mod scheme;
 mod syscall;
@@ -17,7 +16,7 @@ use limine::BaseRevision;
 use log::{debug, error};
 use output::logger;
 use sched::scheduler::add_task;
-use sched::task::{Priority, Task};
+use sched::task::Task;
 use x86_64::instructions::interrupts::enable;
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -49,12 +48,7 @@ unsafe extern "C" fn kmain() -> ! {
     arch::init();
     syscall::init();
     let task = Task::new(include_bytes!("./bin/terminal"));
-    add_task(task);
-    let mut task = Task::new(include_bytes!("./bin/terminal"));
-    task.priority = Priority::High;
-    add_task(task);
-    let mut task = Task::new(include_bytes!("./bin/terminal"));
-    task.priority = Priority::Low;
+    debug!("Task: {:#x?}", task);
     add_task(task);
     enable();
 

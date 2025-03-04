@@ -2,15 +2,11 @@ use core::arch::{asm, naked_asm};
 
 use crate::{
     arch::x86::gdt::GDT,
-    path::Path,
     pop_preserved, pop_scratch, push_preserved, push_scratch,
-    sched::{
-        pid::Pid,
-        scheduler::{current_pid, current_task, remove_current_task},
-    },
+    sched::scheduler::{current_pid, current_task, remove_current_task},
     scheme::{schemes, CallerContext},
 };
-use libjon::fd::FileDescriptorId;
+use libjon::{fd::FileDescriptorId, path::Path};
 use log::{debug, info};
 use x86_64::{
     registers::{
@@ -20,8 +16,6 @@ use x86_64::{
     },
     VirtAddr,
 };
-
-static mut COUNT: usize = 0;
 
 static SYSCALLS: &[Option<fn(usize, usize, usize, usize, usize, usize) -> usize>] = &[
     Some(sys_exit),
@@ -62,19 +56,14 @@ pub(super) fn init() {
 }
 
 #[naked]
-#[allow(named_asm_labels)]
 pub unsafe extern "C" fn syscall_instruction() {
     naked_asm!(
         "swapgs;",
-
         push_scratch!(),
         push_preserved!(),
 
         "call {handler};",
 
-
-        ".globl enter_usermode",
-        "enter_usermode:",
         pop_preserved!(),
         pop_scratch!(),
 
@@ -127,10 +116,6 @@ pub unsafe extern "C" fn handle_syscall() -> usize {
         out(reg) arg5,
         out(reg) arg6,
     );
-
-    if arg1 == 0 {
-        loop {}
-    }
 
     debug!("Syscall {} received", syscall_number);
 

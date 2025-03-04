@@ -50,14 +50,13 @@ pub unsafe fn save(context: &mut Registers, stack_frame: &Registers) {
 
 // IMPORTANT: any acquired locks, or anything you must do before switching tasks,
 // must be released or done here, after this the kernel will jump to the task's instruction pointer
+#[allow(named_asm_labels)]
 unsafe fn restore(context: &Registers) -> ! {
-    debug!("Context: {:#x?}", context);
     const PRESERVED_OFFSET: u8 = 0x48;
     const SCRATCH_OFFSET: u8 = 0x00;
     const IRET_OFFSET: u8 = 0x78;
     const SS_OFFSET: u8 = IRET_OFFSET + 0x20;
     asm!(
-
         // Segment registers
         "mov ds, [r12 + {ss_offset}]",
         "mov es, [r12 + {ss_offset}]",
@@ -72,15 +71,15 @@ unsafe fn restore(context: &Registers) -> ! {
         "push [r12 + {iret_offset}]",        // RIP
 
         // Restore scratch registers
-        "mov rax, [r12 + {scratch_offset}]",
-        "mov rcx, [r12 + {scratch_offset} + 0x8]",
-        "mov rdx, [r12 + {scratch_offset} + 0x10]",
-        "mov rdi, [r12 + {scratch_offset} + 0x18]",
+        "mov r11, [r12 + {scratch_offset}]",
+        "mov r10, [r12 + {scratch_offset} + 0x8]",
+        "mov r9, [r12 + {scratch_offset} + 0x10]",
+        "mov r8, [r12 + {scratch_offset} + 0x18]",
         "mov rsi, [r12 + {scratch_offset} + 0x20]",
-        "mov r8,  [r12 + {scratch_offset} + 0x28]",
-        "mov r9,  [r12 + {scratch_offset} + 0x30]",
-        "mov r10, [r12 + {scratch_offset} + 0x38]",
-        "mov r11, [r12 + {scratch_offset} + 0x40]",
+        "mov rdi,  [r12 + {scratch_offset} + 0x28]",
+        "mov rdx,  [r12 + {scratch_offset} + 0x30]",
+        "mov rcx, [r12 + {scratch_offset} + 0x38]",
+        "mov rax, [r12 + {scratch_offset} + 0x40]",
 
         // Restore preserved registers LAST
         // We're using r12 as a temporary, so restore it last
