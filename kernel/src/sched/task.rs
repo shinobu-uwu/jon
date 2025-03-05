@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use bitmap_allocator::BitAlloc;
 use libjon::fd::FileDescriptorId;
-use log::debug;
+use log::{debug, info};
 
 use crate::{
     arch::x86::structures::Registers,
@@ -54,7 +54,7 @@ impl Task {
         let pid = Pid::new(PID_ALLOCATOR.lock().alloc().unwrap());
         debug!("Creating task with PID {}", pid);
         let kernel_stack = Stack::new(
-            VirtualAddress::new(STACK_START + pid.as_usize() * STACK_SIZE),
+            VirtualAddress::new(STACK_START + (pid.as_usize() - 1) * STACK_SIZE),
             STACK_SIZE,
         );
         let mut context = Registers::new();

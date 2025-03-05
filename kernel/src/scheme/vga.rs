@@ -23,10 +23,12 @@ static NEXT_FD: AtomicUsize = AtomicUsize::new(1);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferIndex(usize);
 
+#[derive(Debug)]
 pub struct VgaScheme {
     pub framebuffers: Arc<RwSpinlock<Vec<Framebuffer>>>,
 }
 
+#[derive(Debug)]
 pub struct Framebuffer {
     pub width: u64,
     pub height: u64,
@@ -37,7 +39,7 @@ pub struct Framebuffer {
 impl VgaScheme {
     pub fn new() -> Self {
         let res = FRAMEBUFFER_REQUEST.get_response().unwrap();
-        let fbs = res
+        let fbs: Vec<Framebuffer> = res
             .framebuffers()
             .into_iter()
             .map(|fb| unsafe {
