@@ -46,7 +46,7 @@ pub trait KernelScheme: Send + Sync + 'static {
         buf: &[u8],
         count: usize,
     ) -> Result<usize, i32>;
-    fn close(&self, descriptor_id: FileDescriptorId) -> Result<(), i32>;
+    fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32>;
 }
 
 pub struct SchemeList {

@@ -2,8 +2,9 @@
 name = "jon_common"
 version = "0.1.0"
 edition = "2021"
+authors = ["Matheus Filipe dos Santos Reinert"]
 
-
+libjon = { path = "../../lib" }
 
 [profile.dev]
 panic = "abort"

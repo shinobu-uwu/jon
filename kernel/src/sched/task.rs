@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use bitmap_allocator::BitAlloc;
+use libjon::fd::FileDescriptorId;
 use log::debug;
 
 use crate::{
@@ -80,6 +81,10 @@ impl Task {
 
     pub fn add_file(&mut self, descriptor: FileDescriptor) {
         self.fds.push(descriptor);
+    }
+
+    pub fn remove_file(&mut self, descriptor_id: FileDescriptorId) {
+        self.fds.retain(|fd| fd.id != descriptor_id);
     }
 }
 

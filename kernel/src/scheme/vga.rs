@@ -6,6 +6,7 @@ use core::{
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use libjon::fd::{FileDescriptorFlags, FileDescriptorId};
 use limine::request::FramebufferRequest;
+use log::debug;
 use spinning_top::RwSpinlock;
 
 use crate::sched::scheduler::get_task_mut;
@@ -23,7 +24,14 @@ static NEXT_FD: AtomicUsize = AtomicUsize::new(1);
 struct FramebufferIndex(usize);
 
 pub struct VgaScheme {
-    pub framebuffers: Arc<RwSpinlock<Vec<&'static mut [u8]>>>,
+    pub framebuffers: Arc<RwSpinlock<Vec<Framebuffer>>>,
+}
+
+pub struct Framebuffer {
+    pub width: u64,
+    pub height: u64,
+    pub bpp: u16,
+    pub inner: &'static mut [u8],
 }
 
 impl VgaScheme {
@@ -33,10 +41,16 @@ impl VgaScheme {
             .framebuffers()
             .into_iter()
             .map(|fb| unsafe {
-                core::slice::from_raw_parts_mut(
+                let inner = core::slice::from_raw_parts_mut(
                     fb.addr() as *mut u8,
                     (fb.width() * fb.height() * fb.bpp() as u64 / 8) as usize,
-                )
+                );
+                Framebuffer {
+                    width: fb.width(),
+                    height: fb.height(),
+                    bpp: fb.bpp(),
+                    inner,
+                }
             })
             .collect();
         Self {
@@ -76,11 +90,11 @@ impl KernelScheme for VgaScheme {
         let framebuffers = self.framebuffers.read();
         let framebuffer = framebuffers.get(framebuffer_index.0).ok_or(2)?;
 
-        let framebuffer_size = framebuffer.len();
+        let framebuffer_size = framebuffer.inner.len();
         let bytes_to_read = count.min(framebuffer_size);
 
         unsafe {
-            copy_nonoverlapping(framebuffer.as_ptr(), buf.as_mut_ptr(), bytes_to_read);
+            copy_nonoverlapping(framebuffer.inner.as_ptr(), buf.as_mut_ptr(), bytes_to_read);
         }
 
         Ok(bytes_to_read)
@@ -92,24 +106,28 @@ impl KernelScheme for VgaScheme {
         buf: &[u8],
         count: usize,
     ) -> Result<usize, i32> {
-        todo!();
         let descriptors = DESCRIPTORS.read();
         let framebuffer_index = descriptors.get(&descriptor_id).ok_or(0x16)?;
 
-        let framebuffers = self.framebuffers.read();
-        let framebuffer = framebuffers.get(framebuffer_index.0).ok_or(2)?;
+        let mut framebuffers = self.framebuffers.write();
+        let framebuffer = framebuffers.get_mut(framebuffer_index.0).ok_or(2)?;
 
-        let framebuffer_size = framebuffer.len();
+        let framebuffer_size = framebuffer.inner.len();
         let bytes_to_write = count.min(framebuffer_size);
 
         unsafe {
-            copy_nonoverlapping(buf.as_ptr(), framebuffer.as_mut_ptr(), bytes_to_write);
+            copy_nonoverlapping(buf.as_ptr(), framebuffer.inner.as_mut_ptr(), bytes_to_write);
         }
 
         Ok(bytes_to_write)
     }
 
-    fn close(&self, descriptor_id: FileDescriptorId) -> Result<(), i32> {
-        todo!()
+    fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32> {
+        debug!("Closing fd: {:?}", descriptor_id);
+        let task = get_task_mut(ctx.pid).ok_or(0x16)?;
+        task.remove_file(descriptor_id);
+        DESCRIPTORS.write().remove(&descriptor_id);
+
+        Ok(())
     }
 }

@@ -1,10 +1,9 @@
 #![no_std]
 #![no_main]
-
-use core::arch::asm;
-
-use jon_common::{ExitCode, module_entrypoint, syscall::fs::open};
-use jon_common::{println, syscall};
+use jon_common::{
+    ExitCode, module_entrypoint,
+    syscall::fs::{open, write},
+};
 
 module_entrypoint!(
     "terminal",
@@ -13,18 +12,9 @@ module_entrypoint!(
     main
 );
 
-#[allow(named_asm_labels)]
 fn main() -> Result<(), ExitCode> {
     let fd = open("vga:fb0");
-    unsafe {
-        asm!("lea rdi, [0x10a2 + rip]");
-        asm!("debug_label:");
-    }
-    println!("{fd}");
-    // unsafe {
-    //     syscall(1, args.as_ptr() as usize, args.len(), 0, 0, 0, 0);
-    // }
-    loop {}
+    write(fd, &[u8::MAX; 128 * 1024 * 4]);
 
     Ok(())
 }

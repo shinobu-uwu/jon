@@ -60,6 +60,7 @@ pub fn exit(code: ExitCode) -> ! {
 
 #[inline]
 #[doc(hidden)]
+#[no_mangle]
 pub fn _print(args: core::fmt::Arguments) {
     let s = args.as_str().unwrap();
     unsafe {
