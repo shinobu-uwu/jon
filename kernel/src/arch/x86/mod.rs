@@ -1,7 +1,10 @@
 use core::arch::asm;
 
-use log::debug;
+use gdt::TSS;
 use structures::Registers;
+use x86_64::VirtAddr;
+
+use crate::sched::task::Task;
 
 pub mod gdt;
 pub mod idt;
@@ -16,13 +19,15 @@ pub fn init() {
     interrupts::init();
 }
 
-pub unsafe fn switch_to(
-    prev_context: &mut Registers,
-    next_context: &Registers,
-    current_stack_frame: &Registers,
-) {
-    save(prev_context, current_stack_frame);
-    restore(next_context);
+pub unsafe fn switch_to(prev: Option<&mut Task>, next: &Task, current_stack_frame: &Registers) {
+    let mut tss = *TSS;
+    tss.privilege_stack_table[0] = VirtAddr::new(next.kernel_stack.top().as_u64());
+
+    if let Some(t) = prev {
+        save(&mut t.context, current_stack_frame);
+    }
+
+    restore(&next.context);
 }
 
 pub unsafe fn save(context: &mut Registers, stack_frame: &Registers) {
