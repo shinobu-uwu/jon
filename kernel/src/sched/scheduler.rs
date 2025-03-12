@@ -62,7 +62,7 @@ pub unsafe fn tick(stack_frame: &Registers) {
             next_task.state = State::Running;
 
             CURRENT_PID = Some(next);
-            arch::switch_to(&mut prev_task.context, &next_task.context, stack_frame);
+            arch::switch_to(Some(prev_task), &next_task, stack_frame);
         }
         (Some(next), None) => {
             let next_task = TASKS.get_mut(&next).unwrap();
@@ -71,7 +71,7 @@ pub unsafe fn tick(stack_frame: &Registers) {
             next_task.state = State::Running;
 
             CURRENT_PID = Some(next);
-            arch::switch_to(&mut Registers::default(), &next_task.context, stack_frame);
+            arch::switch_to(None, &next_task, stack_frame);
         }
         _ => {}
     }
