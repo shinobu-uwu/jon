@@ -29,7 +29,7 @@ pub struct Task {
     pub context: Registers,
     pub fds: Vec<FileDescriptor>,
     next_fd: usize,
-    kernel_stack: Stack,
+    pub kernel_stack: Stack,
     memory_descriptor: MemoryDescriptor,
 }
 
