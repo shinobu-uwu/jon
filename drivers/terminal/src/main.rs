@@ -1,8 +1,9 @@
 #![no_std]
 #![no_main]
+
 use jon_common::{
-    ExitCode, module_entrypoint,
-    syscall::fs::{open, write},
+    ExitCode, module_entrypoint, println,
+    syscall::fs::{open, read, write},
 };
 module_entrypoint!(
     "terminal",
@@ -12,9 +13,19 @@ module_entrypoint!(
 );
 
 fn main() -> Result<(), ExitCode> {
-    let fd = open("vga:fb0");
-    let buffer = [u8::MAX; 256 * 4];
+    let write_fd = open("pipe:abc", 1);
+    let mut buffer = [137u8; 128];
+    write(write_fd, &buffer);
+    buffer = [0u8; 128];
+    let read_fd = open("pipe:abc", 0);
+    read(read_fd, &mut buffer);
 
-    write(fd, &buffer);
+    let serial_fd = open("serial:", 1);
+
+    loop {
+        write(serial_fd, "READ BYTES".as_bytes());
+        write(serial_fd, &buffer);
+    }
+
     Ok(())
 }

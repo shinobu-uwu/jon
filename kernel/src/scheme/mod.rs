@@ -1,3 +1,5 @@
+pub mod pipe;
+pub mod serial;
 pub mod vga;
 
 use crate::sched::pid::Pid;
@@ -19,6 +21,10 @@ lazy_static! {
         debug!("Adding VGA scheme");
         let vga = VgaScheme::new();
         list.add("vga", Arc::new(vga));
+        debug!("Adding pipe scheme");
+        list.add("pipe", Arc::new(pipe::PipeScheme));
+        let serial = serial::SerialScheme;
+        list.add("serial", Arc::new(serial));
         RwSpinlock::new(list)
     };
 }

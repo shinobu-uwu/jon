@@ -4,12 +4,15 @@ use core::{
 };
 
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
-use libjon::fd::{FileDescriptorFlags, FileDescriptorId};
+use libjon::{
+    errno::{EINVAL, ENOENT},
+    fd::{FileDescriptorFlags, FileDescriptorId},
+};
 use limine::request::FramebufferRequest;
 use log::debug;
 use spinning_top::RwSpinlock;
 
-use crate::sched::scheduler::get_task_mut;
+use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
 
 use super::{CallerContext, KernelScheme};
 
@@ -64,12 +67,12 @@ impl VgaScheme {
 impl KernelScheme for VgaScheme {
     fn open(&self, path: &str, _flags: usize, ctx: CallerContext) -> Result<FileDescriptorId, i32> {
         let n = &path[2..];
-        let index: usize = n.parse().map_err(|_| 0x16)?;
-        let task = get_task_mut(ctx.pid).ok_or(0x16)?;
-        self.framebuffers.clone().read().get(index).ok_or(2)?;
+        let index: usize = n.parse().map_err(|_| EINVAL)?;
+        let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;
+        self.framebuffers.clone().read().get(index).ok_or(ENOENT)?;
 
         let id = FileDescriptorId(NEXT_FD.fetch_add(1, atomic::Ordering::Relaxed));
-        task.add_file(crate::sched::fd::FileDescriptor {
+        task.add_file(FileDescriptor {
             id,
             offset: 0,
             scheme: ctx.scheme,
@@ -87,10 +90,10 @@ impl KernelScheme for VgaScheme {
         count: usize,
     ) -> Result<usize, i32> {
         let descriptors = DESCRIPTORS.read();
-        let framebuffer_index = descriptors.get(&descriptor_id).ok_or(0x16)?;
+        let framebuffer_index = descriptors.get(&descriptor_id).ok_or(EINVAL)?;
 
         let framebuffers = self.framebuffers.read();
-        let framebuffer = framebuffers.get(framebuffer_index.0).ok_or(2)?;
+        let framebuffer = framebuffers.get(framebuffer_index.0).ok_or(ENOENT)?;
 
         let framebuffer_size = framebuffer.inner.len();
         let bytes_to_read = count.min(framebuffer_size);
@@ -109,10 +112,10 @@ impl KernelScheme for VgaScheme {
         count: usize,
     ) -> Result<usize, i32> {
         let descriptors = DESCRIPTORS.read();
-        let framebuffer_index = descriptors.get(&descriptor_id).ok_or(0x16)?;
+        let framebuffer_index = descriptors.get(&descriptor_id).ok_or(EINVAL)?;
 
         let mut framebuffers = self.framebuffers.write();
-        let framebuffer = framebuffers.get_mut(framebuffer_index.0).ok_or(2)?;
+        let framebuffer = framebuffers.get_mut(framebuffer_index.0).ok_or(ENOENT)?;
 
         let framebuffer_size = framebuffer.inner.len();
         let bytes_to_write = count.min(framebuffer_size);
@@ -126,7 +129,7 @@ impl KernelScheme for VgaScheme {
 
     fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32> {
         debug!("Closing fd: {:?}", descriptor_id);
-        let task = get_task_mut(ctx.pid).ok_or(0x16)?;
+        let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;
         task.remove_file(descriptor_id);
         DESCRIPTORS.write().remove(&descriptor_id);
 

@@ -26,6 +26,8 @@ impl ElfLoader {
         binary: &[u8],
         segment: &ProgramHeader,
     ) -> Result<(), LoadingError> {
+        debug!("Loading segment at {:#x?}", segment);
+        debug!("Segment p_vaddr: {:#x?}", segment.p_vaddr);
         if segment.p_memsz == 0 {
             return Ok(());
         }
@@ -35,20 +37,26 @@ impl ElfLoader {
         }
 
         let vaddr = align_down(segment.p_vaddr as usize, PAGE_SIZE);
+        let mapped_size = align_down(
+            segment.p_memsz as usize + (segment.p_vaddr as usize % PAGE_SIZE),
+            PAGE_SIZE,
+        ) + PAGE_SIZE;
+
         let phys = PMM
             .lock()
-            .allocate_contiguous(segment.p_memsz as usize)
+            .allocate_contiguous(mapped_size)
             .map_err(|_| LoadingError::MemoryAllocationError)?;
-        let virt = VirtualAddress::new(base_address.as_usize() + vaddr as usize);
+        let virt = VirtualAddress::new(base_address.as_usize() + vaddr);
         let flags = PageFlags::USER_ACCESSIBLE | PageFlags::PRESENT | PageFlags::WRITABLE;
 
         VMM.lock()
-            .map_range(virt, phys, segment.p_memsz as usize, flags)
+            .map_range(virt, phys, mapped_size, flags)
             .map_err(|_| LoadingError::MappingError)?;
         unsafe {
+            debug!("Copying segment to {:#x?}", virt);
             core::ptr::copy_nonoverlapping(
                 binary.as_ptr().offset(segment.p_offset as isize),
-                base_address.offset(segment.p_vaddr as usize).as_u64() as *mut u8,
+                (base_address.as_usize() + segment.p_vaddr as usize) as *mut u8,
                 segment.p_filesz as usize,
             );
         }

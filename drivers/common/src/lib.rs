@@ -2,6 +2,8 @@
 
 use core::arch::asm;
 
+use syscall::fs::{open, write};
+
 pub mod syscall;
 
 #[derive(Debug)]
@@ -62,9 +64,9 @@ pub fn exit(code: ExitCode) -> ! {
 #[doc(hidden)]
 #[no_mangle]
 pub fn _print(args: core::fmt::Arguments) {
-    let s = args.as_str().unwrap();
-    unsafe {
-        syscall(1, s.as_ptr() as usize, s.len(), 0, 0, 0, 0);
+    if let Some(s) = args.as_str() {
+        let fd = open("serial:", 1);
+        write(fd, "Hello, world!".as_bytes());
     }
 }
 

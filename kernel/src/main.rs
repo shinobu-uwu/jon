@@ -13,7 +13,7 @@ use core::arch::asm;
 
 use limine::request::{RequestsEndMarker, RequestsStartMarker, SmpRequest};
 use limine::BaseRevision;
-use log::{debug, error};
+use log::{debug, error, info};
 use output::logger;
 use sched::scheduler::add_task;
 use sched::task::Task;
@@ -48,7 +48,6 @@ unsafe extern "C" fn kmain() -> ! {
     arch::init();
     syscall::init();
     let task = Task::new(include_bytes!("./bin/terminal"));
-    debug!("Task: {:#x?}", task);
     add_task(task);
     enable();
 

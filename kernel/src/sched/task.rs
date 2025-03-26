@@ -57,9 +57,11 @@ impl Task {
             VirtualAddress::new(STACK_START + (pid.as_usize() - 1) * STACK_SIZE),
             STACK_SIZE,
         );
+        debug!("Finished creating stack");
         let mut context = Registers::new();
-        let bin_addr = VirtualAddress::new(0x400000 + (pid.as_usize() - 1) * PAGE_SIZE * 100); // TODO: Use a better dynamic address
+        let bin_addr = VirtualAddress::new(0x400000 + (pid.as_usize() - 1) * PAGE_SIZE * 10); // TODO: Use a better dynamic address
         let loader = ElfLoader::new();
+        debug!("Loading binary");
         let (memory_descriptor, rip) = loader.load(bin_addr, binary).unwrap();
 
         context.iret.rsp = kernel_stack.top().as_u64();
