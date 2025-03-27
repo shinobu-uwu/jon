@@ -1,25 +1,18 @@
-use core::{
-    ptr::copy_nonoverlapping,
-    sync::atomic::{self, AtomicUsize},
-};
+use core::sync::atomic::{self, AtomicUsize};
 
 use alloc::collections::btree_set::BTreeSet;
 use libjon::{
-    errno::{EINVAL, ENOENT, ENOSPC},
+    errno::EINVAL,
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
 use log::{debug, info};
 use spinning_top::RwSpinlock;
 
-use crate::{
-    println,
-    sched::{fd::FileDescriptor, scheduler::get_task_mut},
-};
+use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
 
 use super::{CallerContext, KernelScheme};
 
 static DESCRIPTORS: RwSpinlock<BTreeSet<FileDescriptorId>> = RwSpinlock::new(BTreeSet::new());
-static NEXT_FD: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Debug)]
 pub struct SerialScheme;
@@ -32,14 +25,10 @@ impl KernelScheme for SerialScheme {
         ctx: CallerContext,
     ) -> Result<FileDescriptorId, i32> {
         let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;
-        let id = FileDescriptorId(NEXT_FD.fetch_add(1, atomic::Ordering::Relaxed));
+        let descriptor = FileDescriptor::new(ctx.scheme, FileDescriptorFlags::O_RDWR);
+        let id = descriptor.id;
         DESCRIPTORS.write().insert(id);
-        task.add_file(FileDescriptor {
-            id,
-            offset: 0,
-            scheme: ctx.scheme,
-            flags: FileDescriptorFlags::O_RDWR,
-        });
+        task.add_file(descriptor);
 
         Ok(id)
     }
@@ -58,6 +47,7 @@ impl KernelScheme for SerialScheme {
         buf: &[u8],
         _count: usize,
     ) -> Result<usize, i32> {
+        debug!("Writing to fd: {:?}", descriptor_id);
         let descriptors = DESCRIPTORS.read();
         descriptors.get(&descriptor_id).ok_or(EINVAL)?;
 

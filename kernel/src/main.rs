@@ -47,7 +47,13 @@ unsafe extern "C" fn kmain() -> ! {
     logger::init().unwrap();
     arch::init();
     syscall::init();
-    let task = Task::new(include_bytes!("./bin/terminal"));
+    let task = Task::new(include_bytes!(
+        "../../drivers/terminal/target/x86_64-unknown-none/release/terminal"
+    ));
+    add_task(task);
+    let task = Task::new(include_bytes!(
+        "../../drivers/reader/target/x86_64-unknown-none/release/reader"
+    ));
     add_task(task);
     enable();
 

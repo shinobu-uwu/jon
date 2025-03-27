@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use bitmap_allocator::BitAlloc;
 use libjon::fd::FileDescriptorId;
 use log::{debug, info};
+use x86_64::registers::debug;
 
 use crate::{
     arch::x86::structures::Registers,
@@ -82,7 +83,10 @@ impl Task {
     }
 
     pub fn add_file(&mut self, descriptor: FileDescriptor) {
+        debug!("Adding file descriptor: {:?}", descriptor);
         self.fds.push(descriptor);
+        debug!("FDs after adding: {:?}", self.fds);
+        self.next_fd += 1;
     }
 
     pub fn remove_file(&mut self, descriptor_id: FileDescriptorId) {

@@ -8,6 +8,6 @@ pub fn write(fd: usize, buf: &[u8]) -> usize {
     unsafe { syscall(64, fd, buf.as_ptr() as usize, buf.len(), 0, 0, 0) }
 }
 
-pub fn read(fd: usize, buf: &[u8]) -> usize {
-    unsafe { syscall(63, fd, buf.as_ptr() as usize, buf.len(), 0, 0, 0) }
+pub fn read(fd: usize, buf: &mut [u8]) -> usize {
+    unsafe { syscall(63, fd, buf.as_mut_ptr() as usize, buf.len(), 0, 0, 0) }
 }

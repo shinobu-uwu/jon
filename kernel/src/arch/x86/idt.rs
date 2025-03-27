@@ -1,9 +1,10 @@
 use crate::arch::end_of_interrupt;
+use crate::arch::x86::gdt::{GDT, TSS};
 use crate::arch::x86::interrupts::{ERROR_VECTOR, LAPIC, SPURIOUS_VECTOR, TIMER_VECTOR};
 use crate::interrupt;
-use crate::sched::scheduler::tick;
+use crate::sched::scheduler::{remove_current_task, tick};
 use lazy_static::lazy_static;
-use log::{debug, info};
+use log::{debug, error, info};
 use spinning_top::Spinlock;
 use x86_64::registers::control::Cr2;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
@@ -169,7 +170,12 @@ extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: PageFaultErrorCode,
 ) {
-    set_last_exception(14, error_code.bits() as u32, Cr2::read().unwrap().as_u64());
+    if stack_frame.code_segment == GDT.1.user_code_selector {
+        remove_current_task();
+        error!("Page fault in user mode, removed running task");
+        return;
+    }
+
     panic!(
         "EXCEPTION: PAGE FAULT\nAccessed Address: {:?}\nError Code: {:?}\n{:#?}",
         Cr2::read(),

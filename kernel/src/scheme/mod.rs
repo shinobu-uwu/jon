@@ -23,8 +23,8 @@ lazy_static! {
         list.add("vga", Arc::new(vga));
         debug!("Adding pipe scheme");
         list.add("pipe", Arc::new(pipe::PipeScheme));
-        let serial = serial::SerialScheme;
-        list.add("serial", Arc::new(serial));
+        debug!("Adding serial scheme");
+        list.add("serial", Arc::new(serial::SerialScheme));
         RwSpinlock::new(list)
     };
 }

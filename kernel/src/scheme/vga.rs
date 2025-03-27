@@ -21,7 +21,6 @@ use super::{CallerContext, KernelScheme};
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 static DESCRIPTORS: RwSpinlock<BTreeMap<FileDescriptorId, FramebufferIndex>> =
     RwSpinlock::new(BTreeMap::new());
-static NEXT_FD: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferIndex(usize);
@@ -71,13 +70,9 @@ impl KernelScheme for VgaScheme {
         let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;
         self.framebuffers.clone().read().get(index).ok_or(ENOENT)?;
 
-        let id = FileDescriptorId(NEXT_FD.fetch_add(1, atomic::Ordering::Relaxed));
-        task.add_file(FileDescriptor {
-            id,
-            offset: 0,
-            scheme: ctx.scheme,
-            flags: FileDescriptorFlags::O_RDWR,
-        });
+        let descriptor = FileDescriptor::new(ctx.scheme, FileDescriptorFlags::O_RDWR);
+        let id = descriptor.id;
+        task.add_file(descriptor);
         DESCRIPTORS.write().insert(id, FramebufferIndex(index));
 
         Ok(id)

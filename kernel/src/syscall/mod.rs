@@ -169,7 +169,6 @@ fn sys_read(fd: usize, buf_ptr: usize, count: usize) -> usize {
 }
 
 fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> usize {
-    debug!("Writing to fd: {}", fd);
     let task = current_task().expect("ERROR: NO CURRENT TASK");
     let fd = task
         .fds
@@ -180,7 +179,7 @@ fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> usize {
     let schemes = schemes();
     let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
     let buf = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, count) };
-    debug!("Writing buffer");
+    debug!("Writing buffer {:x?} to fd: {:?}", buf, fd);
     match scheme.write(fd.id, buf, count) {
         Ok(n) => n,
         Err(_) => usize::MAX,

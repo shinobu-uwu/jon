@@ -6,7 +6,7 @@ use jon_common::{
     syscall::fs::{open, read, write},
 };
 module_entrypoint!(
-    "terminal",
+    "reader",
     "A simple terminal driver to serve as a point of interaction with the user.",
     "1.0.0",
     main
@@ -14,9 +14,11 @@ module_entrypoint!(
 
 fn main() -> Result<(), ExitCode> {
     let fd = open("pipe:abc", 1);
-    let mut buffer = [b'A'; 128];
-    write(fd, &buffer);
+    let mut buffer = [0; 128];
+    read(fd, &mut buffer);
 
+    let fd = open("serial:", 0);
+    write(fd, &buffer);
     loop {}
 
     Ok(())

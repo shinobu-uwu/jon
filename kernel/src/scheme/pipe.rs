@@ -1,23 +1,19 @@
-use core::sync::atomic::AtomicUsize;
-
 use alloc::{
     boxed::Box,
     collections::{btree_map::BTreeMap, vec_deque::VecDeque},
-    format,
     vec::Vec,
 };
 use libjon::{
-    errno::{EAGAIN, ENOENT},
-    fd::FileDescriptorId,
+    errno::ENOENT,
+    fd::{FileDescriptorFlags, FileDescriptorId},
 };
 use log::debug;
 use spinning_top::RwSpinlock;
 
-use crate::sched::scheduler::get_task_mut;
+use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
 
 use super::KernelScheme;
 
-static NEXT_PIPE_ID: AtomicUsize = AtomicUsize::new(1);
 static PIPES: RwSpinlock<BTreeMap<FileDescriptorId, Pipe>> = RwSpinlock::new(BTreeMap::new());
 static PATHS: RwSpinlock<BTreeMap<Box<str>, FileDescriptorId>> = RwSpinlock::new(BTreeMap::new());
 
@@ -27,51 +23,45 @@ impl KernelScheme for PipeScheme {
     fn open(
         &self,
         path: &str,
-        flags: usize,
+        _flags: usize,
         ctx: super::CallerContext,
     ) -> Result<FileDescriptorId, i32> {
-        let is_write = flags & 1 == 1;
-        debug!(
-            "Opening {} pipe: {}",
-            path,
-            if is_write { "write" } else { "read" }
-        );
+        debug!("Opening  pipe: {}", path,);
         let task = get_task_mut(ctx.pid).ok_or(ENOENT)?;
         debug!("Found task: {}", task.pid);
         let mut paths = PATHS.write();
 
-        let fd = match paths.get(path) {
+        let fd = match paths.get(path.into()) {
             Some(fd) => {
                 debug!("Found existing pipe: {:?}", fd);
+
+                if !task.fds.iter().any(|f| f.id == *fd) {
+                    debug!("Adding existing pipe FD to task");
+                    let descriptor = FileDescriptor {
+                        id: *fd,
+                        offset: 0,
+                        scheme: ctx.scheme,
+                        flags: FileDescriptorFlags::O_RDWR,
+                    };
+                    task.add_file(descriptor);
+                }
+
                 *fd
             }
             None => {
                 debug!("Creating new pipe");
-                let id = FileDescriptorId(
-                    NEXT_PIPE_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed),
-                );
-
-                if is_write {
-                    debug!("Inserting write pipe: {:?}", id);
-                    PIPES.write().insert(id, Pipe::new(PipeEndType::Write));
-                } else {
-                    debug!("Inserting read pipe: {:?}", id);
-                    PIPES.write().insert(id, Pipe::new(PipeEndType::Read));
-                }
+                let descriptor = FileDescriptor::new(ctx.scheme, FileDescriptorFlags::O_RDWR);
+                let id = descriptor.id;
+                debug!("Inserting pipe: {:?}", id);
+                PIPES.write().insert(id, Pipe::new());
+                task.add_file(descriptor);
 
                 debug!("Inserting path: {} -> {:?}", path, id);
-                paths.insert(format!("{}/{}", task.pid, path).into(), id);
+                paths.insert(path.into(), id);
 
                 id
             }
         };
-
-        task.add_file(crate::sched::fd::FileDescriptor {
-            id: fd,
-            offset: 0,
-            scheme: ctx.scheme,
-            flags: libjon::fd::FileDescriptorFlags::O_RDWR,
-        });
 
         Ok(fd)
     }
@@ -84,7 +74,10 @@ impl KernelScheme for PipeScheme {
     ) -> Result<usize, i32> {
         let mut pipes = PIPES.write();
         let pipe = pipes.get_mut(&descriptor_id).ok_or(ENOENT)?;
-        let message = pipe.buffer.pop_front().ok_or(EAGAIN)?;
+
+        debug!("Pipe len before pop: {}", pipe.buffer.len());
+        let message = pipe.buffer.pop_front().ok_or(0)?;
+        debug!("Pipe len after pop: {}", pipe.buffer.len());
 
         let bytes_to_read = count.min(message.len());
         buf[..bytes_to_read].copy_from_slice(&message[..bytes_to_read]);
@@ -100,39 +93,35 @@ impl KernelScheme for PipeScheme {
     ) -> Result<usize, i32> {
         let mut pipes = PIPES.write();
         let pipe = pipes.get_mut(&descriptor_id).ok_or(ENOENT)?;
+
+        debug!("Pipe len before push: {}", pipe.buffer.len());
         pipe.buffer.push_back(Vec::from(buf));
+        debug!("Pipe len after push: {}", pipe.buffer.len());
 
         Ok(count)
     }
 
-    fn close(&self, descriptor_id: FileDescriptorId, ctx: super::CallerContext) -> Result<(), i32> {
+    fn close(
+        &self,
+        _descriptor_id: FileDescriptorId,
+        _ctx: super::CallerContext,
+    ) -> Result<(), i32> {
         todo!()
     }
 }
 
 pub struct Pipe {
-    pub end_type: PipeEndType,
     pub buffer: VecDeque<Vec<u8>>,
-}
-
-pub enum PipeEndType {
-    Read,
-    Write,
+    readers: usize,
+    writers: usize,
 }
 
 impl Pipe {
-    pub fn new(end_type: PipeEndType) -> Self {
+    pub fn new() -> Self {
         Self {
-            end_type,
             buffer: VecDeque::new(),
+            readers: 0,
+            writers: 0,
         }
-    }
-
-    pub fn is_read(&self) -> bool {
-        matches!(self.end_type, PipeEndType::Read)
-    }
-
-    pub fn is_write(&self) -> bool {
-        matches!(self.end_type, PipeEndType::Write)
     }
 }
