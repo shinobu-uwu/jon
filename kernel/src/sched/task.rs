@@ -84,7 +84,9 @@ impl Task {
     }
 
     pub fn idle() -> Self {
-        Task::new(include_bytes!("../bin/idle"))
+        Task::new(include_bytes!(
+            "../../../drivers/idle/target/x86_64-unknown-none/release/idle"
+        ))
     }
 
     pub fn add_file(&mut self, descriptor: FileDescriptor) {

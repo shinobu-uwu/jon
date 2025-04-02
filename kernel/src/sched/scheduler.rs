@@ -1,5 +1,4 @@
 use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
-use lazy_static::lazy_static;
 use log::{debug, info};
 
 use crate::arch::{self, x86::structures::Registers};
@@ -58,8 +57,6 @@ pub unsafe fn schedule(stack_frame: &Registers) {
 
         match current_pid {
             Some(pid) => {
-                debug!("Current task: {}", pid);
-                debug!("{:#x?}", READY_QUEUE);
                 let current_task = tasks.get_mut(&pid).unwrap();
                 current_task.quantum += 1;
 
