@@ -1,8 +1,9 @@
+use core::arch::{asm, naked_asm};
+
 use alloc::vec::Vec;
 use bitmap_allocator::BitAlloc;
 use libjon::fd::FileDescriptorId;
-use log::{debug, info};
-use x86_64::registers::debug;
+use log::debug;
 
 use crate::{
     arch::x86::structures::Registers,
@@ -45,7 +46,7 @@ pub enum Priority {
 #[derive(Debug)]
 pub enum State {
     Running,
-    Sleeping,
+    Blocked,
     Waiting,
     Zombie,
 }
@@ -82,6 +83,10 @@ impl Task {
         }
     }
 
+    pub fn idle() -> Self {
+        Task::new(include_bytes!("../bin/idle"))
+    }
+
     pub fn add_file(&mut self, descriptor: FileDescriptor) {
         debug!("Adding file descriptor: {:?}", descriptor);
         self.fds.push(descriptor);
@@ -98,4 +103,9 @@ impl Drop for Task {
     fn drop(&mut self) {
         PID_ALLOCATOR.lock().dealloc(self.pid.as_usize());
     }
+}
+
+#[naked]
+unsafe extern "C" fn idle() {
+    naked_asm!("2: hlt; jmp 2b");
 }

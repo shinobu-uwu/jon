@@ -64,7 +64,12 @@ impl VgaScheme {
 }
 
 impl KernelScheme for VgaScheme {
-    fn open(&self, path: &str, _flags: usize, ctx: CallerContext) -> Result<FileDescriptorId, i32> {
+    fn open(
+        &self,
+        path: &str,
+        _flags: FileDescriptorFlags,
+        ctx: CallerContext,
+    ) -> Result<FileDescriptorId, i32> {
         let n = &path[2..];
         let index: usize = n.parse().map_err(|_| EINVAL)?;
         let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;

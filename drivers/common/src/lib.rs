@@ -18,7 +18,6 @@ pub struct ExitCode(pub usize);
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    println!("{}", info);
     loop {}
 }
 
@@ -31,8 +30,8 @@ pub unsafe extern "sysv64" fn syscall(
     arg4: usize,
     arg5: usize,
     arg6: usize,
-) -> usize {
-    let result: usize;
+) -> Result<usize, i32> {
+    let result: isize;
 
     unsafe {
         asm!(
@@ -50,7 +49,11 @@ pub unsafe extern "sysv64" fn syscall(
         );
     }
 
-    result
+    if result < 0 {
+        Err(-result as i32)
+    } else {
+        Ok(result as usize)
+    }
 }
 
 pub fn exit(code: ExitCode) -> ! {
@@ -58,29 +61,6 @@ pub fn exit(code: ExitCode) -> ! {
         syscall(0, code.0, 0, 0, 0, 0, 0);
     }
     loop {}
-}
-
-#[inline]
-#[doc(hidden)]
-#[no_mangle]
-pub fn _print(args: core::fmt::Arguments) {
-    if let Some(s) = args.as_str() {
-        let fd = open("serial:", 1);
-        write(fd, "Hello, world!".as_bytes());
-    }
-}
-
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => ($crate::_print(format_args!($($arg)*)));
-}
-
-#[macro_export]
-macro_rules! println {
-    () => ($crate::print!("\n"));
-    ($($arg:tt)*) => {{
-        $crate::print!("{}\n", format_args!($($arg)*))
-    }};
 }
 
 #[macro_export]

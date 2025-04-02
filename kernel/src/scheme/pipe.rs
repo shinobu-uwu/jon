@@ -4,13 +4,17 @@ use alloc::{
     vec::Vec,
 };
 use libjon::{
-    errno::ENOENT,
+    errno::{EINVAL, ENOENT},
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
 use log::debug;
 use spinning_top::RwSpinlock;
 
-use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
+use crate::sched::{
+    fd::FileDescriptor,
+    pid::Pid,
+    scheduler::{self, block_task, get_task_mut},
+};
 
 use super::KernelScheme;
 
@@ -23,7 +27,7 @@ impl KernelScheme for PipeScheme {
     fn open(
         &self,
         path: &str,
-        _flags: usize,
+        flags: FileDescriptorFlags,
         ctx: super::CallerContext,
     ) -> Result<FileDescriptorId, i32> {
         debug!("Opening  pipe: {}", path,);
@@ -31,9 +35,36 @@ impl KernelScheme for PipeScheme {
         debug!("Found task: {}", task.pid);
         let mut paths = PATHS.write();
 
+        let is_read = flags.contains(FileDescriptorFlags::O_RDONLY)
+            || flags.contains(FileDescriptorFlags::O_RDWR);
+        let is_write = flags.contains(FileDescriptorFlags::O_WRONLY)
+            || flags.contains(FileDescriptorFlags::O_RDWR);
+
         let fd = match paths.get(path.into()) {
             Some(fd) => {
                 debug!("Found existing pipe: {:?}", fd);
+
+                let mut pipes = PIPES.write();
+                let pipe = pipes.get_mut(fd).ok_or(ENOENT)?;
+
+                if is_read {
+                    pipe.readers.push(ctx.pid);
+                    // If a writer was waiting for a reader, unblock any waiting writers
+                    if pipe.readers.len() == 1 && !pipe.writers.is_empty() {
+                        for pid in pipe.writers.drain(..) {
+                            scheduler::unblock_task(pid);
+                        }
+                    }
+                }
+                if is_write {
+                    pipe.writers.push(ctx.pid);
+                    // If a reader was waiting for a writer, unblock any waiting readers
+                    if pipe.writers.len() == 1 && !pipe.readers.is_empty() {
+                        for pid in pipe.readers.drain(..) {
+                            scheduler::unblock_task(pid);
+                        }
+                    }
+                }
 
                 if !task.fds.iter().any(|f| f.id == *fd) {
                     debug!("Adding existing pipe FD to task");
@@ -41,7 +72,7 @@ impl KernelScheme for PipeScheme {
                         id: *fd,
                         offset: 0,
                         scheme: ctx.scheme,
-                        flags: FileDescriptorFlags::O_RDWR,
+                        flags,
                     };
                     task.add_file(descriptor);
                 }
@@ -50,11 +81,30 @@ impl KernelScheme for PipeScheme {
             }
             None => {
                 debug!("Creating new pipe");
-                let descriptor = FileDescriptor::new(ctx.scheme, FileDescriptorFlags::O_RDWR);
+                let descriptor = FileDescriptor::new(ctx.scheme, flags);
                 let id = descriptor.id;
                 debug!("Inserting pipe: {:?}", id);
-                PIPES.write().insert(id, Pipe::new());
+                let mut pipe = Pipe::new();
+
+                match (is_read, is_write) {
+                    (true, true) => {
+                        pipe.readers.push(ctx.pid);
+                        pipe.writers.push(ctx.pid);
+                    }
+                    (true, false) => {
+                        pipe.readers.push(ctx.pid);
+                    }
+                    (false, true) => {
+                        pipe.writers.push(ctx.pid);
+                    }
+                    (false, false) => {
+                        return Err(EINVAL);
+                    }
+                }
+
+                PIPES.write().insert(id, pipe);
                 task.add_file(descriptor);
+                block_task(ctx.pid);
 
                 debug!("Inserting path: {} -> {:?}", path, id);
                 paths.insert(path.into(), id);
@@ -112,16 +162,16 @@ impl KernelScheme for PipeScheme {
 
 pub struct Pipe {
     pub buffer: VecDeque<Vec<u8>>,
-    readers: usize,
-    writers: usize,
+    readers: Vec<Pid>,
+    writers: Vec<Pid>,
 }
 
 impl Pipe {
     pub fn new() -> Self {
         Self {
             buffer: VecDeque::new(),
-            readers: 0,
-            writers: 0,
+            readers: Vec::new(),
+            writers: Vec::new(),
         }
     }
 }

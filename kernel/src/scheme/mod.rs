@@ -6,7 +6,7 @@ use crate::sched::pid::Pid;
 use alloc::{boxed::Box, sync::Arc};
 use hashbrown::HashMap;
 use lazy_static::lazy_static;
-use libjon::fd::FileDescriptorId;
+use libjon::fd::{FileDescriptorFlags, FileDescriptorId};
 use log::debug;
 use spinning_top::{
     lock_api::{RwLockReadGuard, RwLockWriteGuard},
@@ -39,19 +39,27 @@ pub struct CallerContext {
 }
 
 pub trait KernelScheme: Send + Sync + 'static {
-    fn open(&self, path: &str, flags: usize, ctx: CallerContext) -> Result<FileDescriptorId, i32>;
+    fn open(
+        &self,
+        path: &str,
+        flags: FileDescriptorFlags,
+        ctx: CallerContext,
+    ) -> Result<FileDescriptorId, i32>;
+
     fn read(
         &self,
         descriptor_id: FileDescriptorId,
         buf: &mut [u8],
         count: usize,
     ) -> Result<usize, i32>;
+
     fn write(
         &self,
         descriptor_id: FileDescriptorId,
         buf: &[u8],
         count: usize,
     ) -> Result<usize, i32>;
+
     fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32>;
 }
 

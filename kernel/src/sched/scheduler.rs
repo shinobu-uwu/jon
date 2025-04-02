@@ -1,5 +1,6 @@
 use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
-use log::debug;
+use lazy_static::lazy_static;
+use log::{debug, info};
 
 use crate::arch::{self, x86::structures::Registers};
 
@@ -9,26 +10,56 @@ use super::{
 };
 
 static mut TASKS: BTreeMap<Pid, Task> = BTreeMap::new();
-static mut QUEUE: VecDeque<Pid> = VecDeque::new();
+static mut READY_QUEUE: VecDeque<Pid> = VecDeque::new();
+static mut BLOCKED_QUEUE: VecDeque<Pid> = VecDeque::new();
 static mut CURRENT_PID: Option<Pid> = None;
+pub static mut IDLE_PID: Option<Pid> = None;
 
 const QUANTUM_BASE: u64 = 10;
 const HIGH_PRIORITY_BONUS: u64 = 15;
 const LOW_PRIORITY_PENALTY: u64 = 5;
 
-pub unsafe fn tick(stack_frame: &Registers) {
-    if CURRENT_PID.is_none() && TASKS.is_empty() {
-        debug!("No tasks to run, halting");
-        return;
+pub unsafe fn init() {
+    if IDLE_PID.is_none() {
+        let task = Task::idle();
+        let pid = task.pid;
+        TASKS.insert(pid, task);
+        IDLE_PID = Some(pid);
+    }
+}
+
+pub unsafe fn schedule(stack_frame: &Registers) {
+    debug!("Scheduling");
+
+    if CURRENT_PID.is_none() && READY_QUEUE.is_empty() {
+        debug!("No regular tasks to run, checking for idle task");
+
+        // Check if we have the idle task and if it's not already in the ready queue
+        if let Some(idle_pid) = IDLE_PID {
+            // Make sure idle task isn't already in the queue
+            if !READY_QUEUE.contains(&idle_pid) {
+                debug!("Adding idle task to ready queue");
+                READY_QUEUE.push_back(idle_pid);
+            }
+        } else {
+            // No idle task exists, create one
+            debug!("Creating new idle task");
+            let idle_task = Task::idle();
+            let pid = idle_task.pid;
+            add_task(idle_task);
+            IDLE_PID = Some(pid);
+        }
     }
 
     let current_pid = CURRENT_PID;
     let next_pid = {
         let tasks = &mut TASKS;
-        let queue = &mut QUEUE;
+        let queue = &mut READY_QUEUE;
 
         match current_pid {
             Some(pid) => {
+                debug!("Current task: {}", pid);
+                debug!("{:#x?}", READY_QUEUE);
                 let current_task = tasks.get_mut(&pid).unwrap();
                 current_task.quantum += 1;
 
@@ -81,7 +112,7 @@ pub fn add_task(task: Task) {
     unsafe {
         let pid = task.pid;
         debug!("Adding task {}", pid);
-        QUEUE.push_back(pid);
+        READY_QUEUE.push_back(pid);
         TASKS.insert(pid, task);
     }
 }
@@ -103,7 +134,7 @@ pub fn remove_task(pid: Pid) {
             return;
         }
 
-        QUEUE.retain(|&p| p != pid);
+        READY_QUEUE.retain(|&p| p != pid);
 
         if CURRENT_PID == Some(pid) {
             CURRENT_PID = None;
@@ -125,4 +156,52 @@ pub fn get_task(pid: Pid) -> Option<&'static Task> {
 
 pub fn get_task_mut(pid: Pid) -> Option<&'static mut Task> {
     unsafe { TASKS.get_mut(&pid) }
+}
+
+pub fn block_current_task() {
+    unsafe {
+        if let Some(pid) = CURRENT_PID {
+            block_task(pid);
+        }
+    }
+}
+
+pub fn block_task(pid: Pid) {
+    unsafe {
+        info!("Blocking task {}", pid);
+
+        if let Some(task) = TASKS.get_mut(&pid) {
+            task.state = State::Blocked;
+            READY_QUEUE.retain(|&p| p != pid);
+            BLOCKED_QUEUE.push_back(pid);
+
+            if let Some(current_pid) = CURRENT_PID {
+                if current_pid == pid {
+                    CURRENT_PID = None;
+                }
+            }
+
+            schedule(&Registers::default());
+        }
+    }
+}
+
+pub fn unblock_task(pid: Pid) {
+    unsafe {
+        info!("Unblocking task {}", pid);
+
+        if let Some(task) = TASKS.get_mut(&pid) {
+            task.state = State::Running;
+            BLOCKED_QUEUE.retain(|&p| p != pid);
+            READY_QUEUE.push_back(pid);
+        }
+    }
+}
+
+pub fn unblock_current_task() {
+    unsafe {
+        if let Some(pid) = CURRENT_PID {
+            unblock_task(pid);
+        }
+    }
 }

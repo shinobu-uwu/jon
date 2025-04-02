@@ -1,5 +1,3 @@
-use core::sync::atomic::{self, AtomicUsize};
-
 use alloc::collections::btree_set::BTreeSet;
 use libjon::{
     errno::EINVAL,
@@ -21,7 +19,7 @@ impl KernelScheme for SerialScheme {
     fn open(
         &self,
         _path: &str,
-        _flags: usize,
+        _flags: FileDescriptorFlags,
         ctx: CallerContext,
     ) -> Result<FileDescriptorId, i32> {
         let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;

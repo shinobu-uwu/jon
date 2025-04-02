@@ -13,9 +13,9 @@ module_entrypoint!(
 );
 
 fn main() -> Result<(), ExitCode> {
-    let fd = open("pipe:abc", 1);
+    let fd = open("pipe:abc", 1).unwrap();
     let mut buffer = [b'A'; 128];
-    write(fd, &buffer);
+    write(fd, &buffer).unwrap();
 
     loop {}
 

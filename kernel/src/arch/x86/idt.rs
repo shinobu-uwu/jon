@@ -2,10 +2,11 @@ use crate::arch::end_of_interrupt;
 use crate::arch::x86::gdt::{GDT, TSS};
 use crate::arch::x86::interrupts::{ERROR_VECTOR, LAPIC, SPURIOUS_VECTOR, TIMER_VECTOR};
 use crate::interrupt;
-use crate::sched::scheduler::{remove_current_task, tick};
+use crate::sched::scheduler::{remove_current_task, schedule};
 use lazy_static::lazy_static;
 use log::{debug, error, info};
 use spinning_top::Spinlock;
+use x86_64::instructions::interrupts::{are_enabled, without_interrupts};
 use x86_64::registers::control::Cr2;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 
@@ -54,7 +55,7 @@ lazy_static! {
 
 interrupt!(timer_interrupt_handler, |interrupt_stack| {
     end_of_interrupt();
-    tick(interrupt_stack);
+    schedule(interrupt_stack);
 });
 
 #[derive(Debug, Clone, Copy)]

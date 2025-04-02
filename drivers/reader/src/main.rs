@@ -13,12 +13,12 @@ module_entrypoint!(
 );
 
 fn main() -> Result<(), ExitCode> {
-    let fd = open("pipe:abc", 1);
+    let fd = open("pipe:abc", 1).unwrap();
     let mut buffer = [0; 128];
-    read(fd, &mut buffer);
+    read(fd, &mut buffer).unwrap();
 
-    let fd = open("serial:", 0);
-    write(fd, &buffer);
+    let fd = open("serial:", 0).unwrap();
+    write(fd, &buffer).unwrap();
     loop {}
 
     Ok(())

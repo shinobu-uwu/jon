@@ -7,7 +7,8 @@ use crate::{
     scheme::{schemes, CallerContext},
 };
 use libjon::{
-    fd::FileDescriptorId,
+    errno::ENOENT,
+    fd::{FileDescriptorFlags, FileDescriptorId},
     path::Path,
     syscall::{SYS_EXIT, SYS_OPEN, SYS_READ, SYS_WRITE},
 };
@@ -20,6 +21,8 @@ use x86_64::{
     },
     VirtAddr,
 };
+
+type SyscallResult = Result<usize, i32>;
 
 pub(super) fn init() {
     // Enable syscall/sysret
@@ -98,21 +101,30 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Registers) {
         SYS_READ => sys_read(arg1, arg2, arg3),
         _ => {
             debug!("Invalid syscall number: {}", syscall_number);
-            usize::MAX
+            Err(ENOENT)
         }
     };
 
-    (*registers).scratch.rax = result as u64;
+    match result {
+        Ok(result) => {
+            debug!("Syscall {} returned: {}", syscall_number, result);
+            (*registers).scratch.rax = result as u64;
+        }
+        Err(errno) => {
+            debug!("Syscall {} failed: {}", syscall_number, errno);
+            (*registers).scratch.rax = -errno as u64;
+        }
+    }
 }
 
-fn sys_exit(code: usize) -> usize {
+fn sys_exit(code: usize) -> SyscallResult {
     debug!("Exiting with code: {}", code);
     remove_current_task();
 
-    0
+    Ok(0)
 }
 
-fn sys_open(path_ptr: usize, path_len: usize, flags: usize) -> usize {
+fn sys_open(path_ptr: usize, path_len: usize, flags: usize) -> SyscallResult {
     debug!("Opening file");
     debug!("Path pointer: {:#x?}", path_ptr);
     debug!("Path length: {}", path_len);
@@ -133,23 +145,27 @@ fn sys_open(path_ptr: usize, path_len: usize, flags: usize) -> usize {
             scheme: id,
         };
 
-        match scheme.open(path.path, flags, caller_context) {
+        match scheme.open(
+            path.path,
+            FileDescriptorFlags::from_bits(flags).expect("Failed to convert flags"),
+            caller_context,
+        ) {
             Ok(fd_id) => {
                 debug!("Opened file descriptor: {:?}", fd_id);
-                fd_id.0
+                Ok(fd_id.0)
             }
             Err(err) => {
                 debug!("Error opening file: {}", err);
-                usize::MAX
+                Err(err)
             }
         }
     } else {
         debug!("No scheme found for: {}", scheme_name);
-        usize::MAX
+        Err(ENOENT)
     }
 }
 
-fn sys_read(fd: usize, buf_ptr: usize, count: usize) -> usize {
+fn sys_read(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
     let task = current_task().expect("ERROR: NO CURRENT TASK");
     let fd = task
         .fds
@@ -162,13 +178,10 @@ fn sys_read(fd: usize, buf_ptr: usize, count: usize) -> usize {
     debug!("Reading into buffer: {:#x?}", buf_ptr);
     debug!("Reading count: {}", count);
     let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr as *mut u8, count) };
-    match scheme.read(fd.id, buf, count) {
-        Ok(n) => n,
-        Err(_) => usize::MAX,
-    }
+    scheme.read(fd.id, buf, count)
 }
 
-fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> usize {
+fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
     let task = current_task().expect("ERROR: NO CURRENT TASK");
     let fd = task
         .fds
@@ -180,8 +193,5 @@ fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> usize {
     let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
     let buf = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, count) };
     debug!("Writing buffer {:x?} to fd: {:?}", buf, fd);
-    match scheme.write(fd.id, buf, count) {
-        Ok(n) => n,
-        Err(_) => usize::MAX,
-    }
+    scheme.write(fd.id, buf, count)
 }
