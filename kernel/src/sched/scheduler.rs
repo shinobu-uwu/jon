@@ -33,15 +33,12 @@ pub unsafe fn schedule(stack_frame: &Registers) {
     if CURRENT_PID.is_none() && READY_QUEUE.is_empty() {
         debug!("No regular tasks to run, checking for idle task");
 
-        // Check if we have the idle task and if it's not already in the ready queue
         if let Some(idle_pid) = IDLE_PID {
-            // Make sure idle task isn't already in the queue
             if !READY_QUEUE.contains(&idle_pid) {
                 debug!("Adding idle task to ready queue");
                 READY_QUEUE.push_back(idle_pid);
             }
         } else {
-            // No idle task exists, create one
             debug!("Creating new idle task");
             let idle_task = Task::idle();
             let pid = idle_task.pid;

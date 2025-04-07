@@ -1,4 +1,5 @@
 pub mod pipe;
+mod schemes;
 pub mod serial;
 pub mod vga;
 

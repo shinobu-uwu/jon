@@ -9,6 +9,7 @@ use crate::{
 pub struct Stack {
     bottom: VirtualAddress,
     size: usize,
+    len: usize,
 }
 
 impl Stack {
@@ -27,10 +28,21 @@ impl Stack {
             )
             .unwrap();
 
-        Self { bottom, size }
+        Self {
+            bottom,
+            size,
+            len: 0,
+        }
     }
 
     pub fn top(&self) -> VirtualAddress {
-        VirtualAddress::new(self.bottom.as_usize() + self.size)
+        // stacks grow downwards, so the top is the bottom address + size - len
+        VirtualAddress::new(self.bottom.as_usize() + self.size - self.len)
+    }
+
+    pub fn set_top(&mut self, top: VirtualAddress) {
+        // stacks grow downwards, so the len is the bottom address + size - top
+        self.len = self.bottom.as_usize() + self.size - top.as_usize();
+        debug!("Stack top set to {:#x?}", top);
     }
 }

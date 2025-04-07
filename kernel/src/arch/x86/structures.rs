@@ -47,8 +47,10 @@ impl Registers {
     pub fn new() -> Self {
         let mut stack = Self::default();
         stack.iret.rflags = x86_64::registers::rflags::RFlags::INTERRUPT_FLAG.bits();
-        stack.iret.cs = GDT.1.user_code_selector.0 as u64;
-        stack.iret.ss = GDT.1.user_data_selector.0 as u64;
+        unsafe {
+            stack.iret.cs = GDT.1.user_code_selector.0 as u64;
+            stack.iret.ss = GDT.1.user_data_selector.0 as u64;
+        }
 
         stack
     }

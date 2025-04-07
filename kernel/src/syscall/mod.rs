@@ -1,10 +1,14 @@
-use core::arch::naked_asm;
+use core::arch::{asm, naked_asm};
 
 use crate::{
-    arch::x86::{gdt::GDT, structures::Registers},
+    arch::x86::{
+        gdt::GDT,
+        structures::{Registers, Scratch},
+    },
     pop_preserved, pop_scratch, push_preserved, push_scratch,
     sched::scheduler::{current_pid, current_task, remove_current_task},
     scheme::{schemes, CallerContext},
+    swapgs,
 };
 use libjon::{
     errno::ENOENT,
@@ -19,6 +23,7 @@ use x86_64::{
         model_specific::{LStar, SFMask, Star},
         rflags::RFlags,
     },
+    structures::gdt::SegmentSelector,
     VirtAddr,
 };
 
@@ -32,15 +37,14 @@ pub(super) fn init() {
         });
     }
 
-    let kernel_cs = GDT.1.kernel_code_selector;
-    let kernel_ss = GDT.1.kernel_data_selector;
-    let user_cs = GDT.1.user_code_selector;
-    let user_ss = GDT.1.user_data_selector;
-
-    debug!("User CS: {:#x?}", user_cs.0);
-    debug!("User SS: {:#x?}", user_ss.0);
-    debug!("Kernel CS: {:#x?}", kernel_cs.0);
-    debug!("Kernel SS: {:#x?}", kernel_ss.0);
+    let (kernel_cs, kernel_ss, user_cs, user_ss) = unsafe {
+        (
+            GDT.1.kernel_code_selector,
+            GDT.1.kernel_data_selector,
+            GDT.1.user_code_selector,
+            GDT.1.user_data_selector,
+        )
+    };
 
     match Star::write(user_cs, user_ss, kernel_cs, kernel_ss) {
         Ok(_) => {
@@ -58,30 +62,53 @@ pub(super) fn init() {
 #[naked]
 pub unsafe extern "C" fn syscall_instruction() {
     naked_asm!(
-        "swapgs;",
+        "swapgs;",                    // Swap KGSBASE with GSBASE, allowing fast TSS access.
+        "mov gs:[{sp}], rsp;",        // Save userspace stack pointer
+        "mov rsp, gs:[{ksp}];",       // Load kernel stack pointer
+        "push QWORD PTR {ss_sel};",   // Push fake userspace SS (resembling iret frame)
+        "push QWORD PTR gs:[{sp}];",  // Push userspace rsp
+        "push r11;",                  // Push rflags
+        "push QWORD PTR {cs_sel};",   // Push fake CS (resembling iret stack frame)
+        "push rcx;",                  // Push userspace return pointer
+        "mov r12",
 
-        push_preserved!(),
+        "push rax;",
         push_scratch!(),
+        push_preserved!(),
+
         "mov rdi, rsp",
 
         "call {handler};",
 
-        pop_scratch!(),
-        pop_preserved!(),
+        ".globl enter_usermode",
+        "enter_usermode:",
 
-        // We must ensure RCX is canonical; if it is not when running sysretq, the consequences can be
-        // fatal from a security perspective.
+        pop_preserved!(),
+        pop_scratch!(),
+
+        "swapgs;",
+
+        "pop rcx;",
+
+        // Ensure RCX is canonical (security hardening)
         "shl rcx, 16;",
         "sar rcx, 16;",
 
-        "swapgs;",
-        "sysretq;", // Return into userspace; RCX=>RIP,R11=>RFLAGS
+        "add rsp, 8;",              // Pop fake userspace CS
+        "pop r11;",                 // Pop rflags
+        "pop rsp;",                 // Restore userspace stack pointer
+        "sysretq;",                 // Return into userspace; RCX=>RIP,R11=>RFLAGS
         handler = sym handle_syscall,
+    sp = const(offset_of!(gdt::ProcessorControlRegion, user_rsp_tmp)),
+    ksp = const(offset_of!(gdt::ProcessorControlRegion, tss) + offset_of!(TaskStateSegment, rsp)),
+    ss_sel = GDT,
+    cs_sel = const(SegmentSelector::new(gdt::GDT_USER_CODE as u16, x86::Ring::Ring3).bits()),
     );
 }
 
-pub unsafe extern "C" fn handle_syscall(registers: *mut Registers) {
-    let scratch = &(*registers).scratch;
+pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
+    let scratch = &(*registers);
+    debug!("Scratch: {:#x?}", scratch);
     let (syscall_number, arg1, arg2, arg3, arg4, arg5, arg6) = (
         scratch.rax as usize,
         scratch.rdi as usize,
@@ -108,11 +135,11 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Registers) {
     match result {
         Ok(result) => {
             debug!("Syscall {} returned: {}", syscall_number, result);
-            (*registers).scratch.rax = result as u64;
+            (*registers).rax = result as u64;
         }
         Err(errno) => {
             debug!("Syscall {} failed: {}", syscall_number, errno);
-            (*registers).scratch.rax = -errno as u64;
+            (*registers).rax = -errno as u64;
         }
     }
 }

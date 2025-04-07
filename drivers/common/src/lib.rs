@@ -1,8 +1,8 @@
 #![no_std]
 
-use core::arch::asm;
+use core::{arch::asm, fmt::Write};
 
-use syscall::fs::{open, write};
+use heapless::String;
 
 pub mod syscall;
 
@@ -58,7 +58,7 @@ pub unsafe extern "sysv64" fn syscall(
 
 pub fn exit(code: ExitCode) -> ! {
     unsafe {
-        syscall(0, code.0, 0, 0, 0, 0, 0);
+        syscall(0, code.0, 0, 0, 0, 0, 0).unwrap();
     }
     loop {}
 }
@@ -68,9 +68,12 @@ macro_rules! module_entrypoint {
     ($name:expr, $description:expr, $version:expr, $entrypoint:ident) => {
         #[no_mangle]
         pub extern "C" fn _start() -> ! {
-            let result = $entrypoint();
+            let read_pipe =
+                jon_common::syscall::fs::open(concat!("pipe:", $name, "/read"), 0x1).unwrap();
+            let write_pipe =
+                jon_common::syscall::fs::open(concat!("pipe:", $name, "/write"), 0x2).unwrap();
 
-            let exit_code = match result {
+            let exit_code = match $entrypoint(read_pipe, write_pipe) {
                 Ok(_) => ExitCode(0),
                 Err(code) => code,
             };
@@ -78,4 +81,10 @@ macro_rules! module_entrypoint {
             $crate::exit(exit_code);
         }
     };
+}
+
+pub fn usize_to_str(value: usize) -> String<20> {
+    let mut s = String::<20>::new();
+    write!(&mut s, "{}", value).unwrap();
+    s
 }

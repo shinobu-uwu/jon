@@ -13,3 +13,6 @@ debug = true
 [profile.release]
 panic = "abort"
 
+[dependencies]
+heapless = { version = "0.8.0" }
+

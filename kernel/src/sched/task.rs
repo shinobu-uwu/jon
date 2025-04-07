@@ -32,6 +32,7 @@ pub struct Task {
     pub fds: Vec<FileDescriptor>,
     next_fd: usize,
     pub kernel_stack: Stack,
+    pub user_stack: Stack,
     memory_descriptor: MemoryDescriptor,
 }
 
@@ -55,8 +56,13 @@ impl Task {
     pub fn new(binary: &[u8]) -> Self {
         let pid = Pid::new(PID_ALLOCATOR.lock().alloc().unwrap());
         debug!("Creating task with PID {}", pid);
+        let start_block = (pid.as_usize() - 1) * 2;
         let kernel_stack = Stack::new(
-            VirtualAddress::new(STACK_START + (pid.as_usize() - 1) * STACK_SIZE),
+            VirtualAddress::new(STACK_START + start_block * STACK_SIZE),
+            STACK_SIZE,
+        );
+        let user_stack = Stack::new(
+            VirtualAddress::new(STACK_START + (start_block + 1) * STACK_SIZE),
             STACK_SIZE,
         );
         debug!("Finished creating stack");
@@ -66,13 +72,14 @@ impl Task {
         debug!("Loading binary");
         let (memory_descriptor, rip) = loader.load(bin_addr, binary).unwrap();
 
-        context.iret.rsp = kernel_stack.top().as_u64();
+        context.iret.rsp = user_stack.top().as_u64();
         context.iret.rip = rip.as_u64();
 
         Self {
             pid,
             parent: None,
             kernel_stack,
+            user_stack,
             context,
             state: State::Waiting,
             memory_descriptor,

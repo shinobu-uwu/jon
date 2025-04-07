@@ -10,11 +10,7 @@ use libjon::{
 use log::debug;
 use spinning_top::RwSpinlock;
 
-use crate::sched::{
-    fd::FileDescriptor,
-    pid::Pid,
-    scheduler::{self, block_task, get_task_mut},
-};
+use crate::sched::{fd::FileDescriptor, pid::Pid, scheduler::get_task_mut};
 
 use super::KernelScheme;
 
@@ -49,21 +45,9 @@ impl KernelScheme for PipeScheme {
 
                 if is_read {
                     pipe.readers.push(ctx.pid);
-                    // If a writer was waiting for a reader, unblock any waiting writers
-                    if pipe.readers.len() == 1 && !pipe.writers.is_empty() {
-                        for pid in pipe.writers.drain(..) {
-                            scheduler::unblock_task(pid);
-                        }
-                    }
                 }
                 if is_write {
                     pipe.writers.push(ctx.pid);
-                    // If a reader was waiting for a writer, unblock any waiting readers
-                    if pipe.writers.len() == 1 && !pipe.readers.is_empty() {
-                        for pid in pipe.readers.drain(..) {
-                            scheduler::unblock_task(pid);
-                        }
-                    }
                 }
 
                 if !task.fds.iter().any(|f| f.id == *fd) {
@@ -104,7 +88,6 @@ impl KernelScheme for PipeScheme {
 
                 PIPES.write().insert(id, pipe);
                 task.add_file(descriptor);
-                block_task(ctx.pid);
 
                 debug!("Inserting path: {} -> {:?}", path, id);
                 paths.insert(path.into(), id);
@@ -122,6 +105,7 @@ impl KernelScheme for PipeScheme {
         buf: &mut [u8],
         count: usize,
     ) -> Result<usize, i32> {
+        debug!("Reading from pipe: {:?}", descriptor_id);
         let mut pipes = PIPES.write();
         let pipe = pipes.get_mut(&descriptor_id).ok_or(ENOENT)?;
 

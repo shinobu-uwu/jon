@@ -1,6 +1,7 @@
 use core::arch::asm;
 
 use gdt::TSS;
+use log::debug;
 use structures::Registers;
 use x86_64::VirtAddr;
 
@@ -20,13 +21,12 @@ pub fn init() {
 }
 
 pub unsafe fn switch_to(prev: Option<&mut Task>, next: &Task, current_stack_frame: &Registers) {
-    let mut tss = *TSS;
-    tss.privilege_stack_table[0] = VirtAddr::new(next.kernel_stack.top().as_u64());
-
     if let Some(t) = prev {
         save(&mut t.context, current_stack_frame);
     }
 
+    TSS.privilege_stack_table[0] = VirtAddr::new(next.kernel_stack.top().as_u64());
+    TSS.privilege_stack_table[2] = VirtAddr::new(next.user_stack.top().as_u64());
     restore(&next.context);
 }
 
