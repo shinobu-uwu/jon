@@ -18,7 +18,7 @@ use crate::{
 
 use super::{fd::FileDescriptor, memory::MemoryDescriptor};
 
-const STACK_START: usize = 0xffff888000000000;
+const KERNEL_STACK_START: usize = 0xffff888000000000;
 const STACK_SIZE: usize = 0x4000; // 16 KiB
 
 #[derive(Debug)]
@@ -30,9 +30,9 @@ pub struct Task {
     pub priority: Priority,
     pub context: Registers,
     pub fds: Vec<FileDescriptor>,
-    next_fd: usize,
     pub kernel_stack: Stack,
     pub user_stack: Stack,
+    next_fd: usize,
     memory_descriptor: MemoryDescriptor,
 }
 
@@ -58,11 +58,11 @@ impl Task {
         debug!("Creating task with PID {}", pid);
         let start_block = (pid.as_usize() - 1) * 2;
         let kernel_stack = Stack::new(
-            VirtualAddress::new(STACK_START + start_block * STACK_SIZE),
+            VirtualAddress::new(KERNEL_STACK_START + start_block * STACK_SIZE),
             STACK_SIZE,
         );
         let user_stack = Stack::new(
-            VirtualAddress::new(STACK_START + (start_block + 1) * STACK_SIZE),
+            VirtualAddress::new(KERNEL_STACK_START + (start_block + 1) * STACK_SIZE),
             STACK_SIZE,
         );
         debug!("Finished creating stack");

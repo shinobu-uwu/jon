@@ -1,7 +1,6 @@
 use core::arch::asm;
 
 use gdt::TSS;
-use log::debug;
 use structures::Registers;
 use x86_64::VirtAddr;
 

@@ -1,3 +1,4 @@
+use core::mem::offset_of;
 use core::ptr::addr_of;
 use core::usize;
 
@@ -18,6 +19,7 @@ pub static mut GDT: (GlobalDescriptorTable, Selectors) = {
     let kernel_data_selector = gdt.append(Descriptor::kernel_data_segment());
     let user_data_selector = gdt.append(Descriptor::user_data_segment());
     let user_code_selector = gdt.append(Descriptor::user_code_segment());
+
     (
         gdt,
         Selectors {
@@ -64,6 +66,12 @@ pub fn init() {
         CS::set_reg(GDT.1.kernel_code_selector);
         SS::set_reg(GDT.1.kernel_data_selector);
         load_tss(tss_selector);
+
+        let tss_addr = addr_of!(TSS) as u64;
+        let gs_base = tss_addr + offset_of!(TaskStateSegment, privilege_stack_table) as u64;
+
+        use x86_64::registers::model_specific::GsBase;
+        GsBase::write(VirtAddr::new(gs_base));
     }
 
     debug!("GDT loaded");

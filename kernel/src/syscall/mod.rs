@@ -1,14 +1,10 @@
-use core::arch::{asm, naked_asm};
+use core::arch::naked_asm;
 
 use crate::{
-    arch::x86::{
-        gdt::GDT,
-        structures::{Registers, Scratch},
-    },
+    arch::x86::{gdt::GDT, structures::Scratch},
     pop_preserved, pop_scratch, push_preserved, push_scratch,
     sched::scheduler::{current_pid, current_task, remove_current_task},
     scheme::{schemes, CallerContext},
-    swapgs,
 };
 use libjon::{
     errno::ENOENT,
@@ -23,7 +19,6 @@ use x86_64::{
         model_specific::{LStar, SFMask, Star},
         rflags::RFlags,
     },
-    structures::gdt::SegmentSelector,
     VirtAddr,
 };
 
@@ -63,46 +58,33 @@ pub(super) fn init() {
 pub unsafe extern "C" fn syscall_instruction() {
     naked_asm!(
         "swapgs;",                    // Swap KGSBASE with GSBASE, allowing fast TSS access.
-        "mov gs:[{sp}], rsp;",        // Save userspace stack pointer
-        "mov rsp, gs:[{ksp}];",       // Load kernel stack pointer
-        "push QWORD PTR {ss_sel};",   // Push fake userspace SS (resembling iret frame)
-        "push QWORD PTR gs:[{sp}];",  // Push userspace rsp
-        "push r11;",                  // Push rflags
-        "push QWORD PTR {cs_sel};",   // Push fake CS (resembling iret stack frame)
-        "push rcx;",                  // Push userspace return pointer
-        "mov r12",
+        "2: jmp 2b",
+        "mov gs:0, rsp;",        // Save userspace stack pointer
+        "mov rsp, gs:16;",       // Load kernel stack pointer
 
-        "push rax;",
         push_scratch!(),
         push_preserved!(),
 
-        "mov rdi, rsp",
+        // Call C handler
+        "mov rsp, rdi",                  // Pass register state as argument
+        "call {handler}",
 
-        "call {handler};",
-
-        ".globl enter_usermode",
-        "enter_usermode:",
-
+        // Restore everything
         pop_preserved!(),
         pop_scratch!(),
+        "pop rax",                        // Get return value
 
-        "swapgs;",
+        // Restore user context
+        "pop r11",                        // Restore user RFLAGS
+        "pop rcx",                        // Restore user RIP
 
-        "pop rcx;",
+        // Switch back to user stack
+        "mov gs:8, rsp",                // Restore user RSP from CPU_LOCAL_STATE.user_rsp
 
-        // Ensure RCX is canonical (security hardening)
-        "shl rcx, 16;",
-        "sar rcx, 16;",
+        "swapgs",                          // Swap back to user GS base
+        "sysretq",                         // Return to user mode
 
-        "add rsp, 8;",              // Pop fake userspace CS
-        "pop r11;",                 // Pop rflags
-        "pop rsp;",                 // Restore userspace stack pointer
-        "sysretq;",                 // Return into userspace; RCX=>RIP,R11=>RFLAGS
         handler = sym handle_syscall,
-    sp = const(offset_of!(gdt::ProcessorControlRegion, user_rsp_tmp)),
-    ksp = const(offset_of!(gdt::ProcessorControlRegion, tss) + offset_of!(TaskStateSegment, rsp)),
-    ss_sel = GDT,
-    cs_sel = const(SegmentSelector::new(gdt::GDT_USER_CODE as u16, x86::Ring::Ring3).bits()),
     );
 }
 
