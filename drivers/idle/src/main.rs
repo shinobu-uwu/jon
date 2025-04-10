@@ -7,7 +7,7 @@ use jon_common::{
 };
 module_entrypoint!("idle", "idle task", "1.0.0", main);
 
-fn main() -> Result<(), ExitCode> {
+fn main(_: usize, _: usize) -> Result<(), ExitCode> {
     loop {}
 
     Ok(())
