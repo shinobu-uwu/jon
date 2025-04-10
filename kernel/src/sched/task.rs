@@ -52,9 +52,6 @@ pub enum State {
 
 impl Task {
     pub fn new(binary: &[u8]) -> Self {
-        // unsafe {
-        //     core::arch::asm!("2: jmp 2b");
-        // }
         let pid = Pid::new(Pid::next_pid());
         debug!("Creating task with PID {}", pid);
         let start_block = (pid.as_usize() - 1) * 2;
