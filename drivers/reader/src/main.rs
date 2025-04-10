@@ -13,31 +13,12 @@ module_entrypoint!(
     main
 );
 
-fn main(read_pipe: usize, _write_pipe: usize) -> Result<(), ExitCode> {
-    let serial = open("serial:", 0x2).unwrap();
-
-    loop {
-        message(read_pipe);
-        // match read(read_pipe, &mut buf) {
-        //     Ok(_) => {
-        //         if buf[0] == 69 {
-        //             write(serial, b"Nice").unwrap();
-        //         }
-        //     }
-        //     Err(e) => {
-        //         write(serial, b"Error reading from pipe").unwrap();
-        //     }
-        // }
-    }
-}
-
-fn message(read_pipe: usize) {
+fn main(_read_pipe: usize, _write_pipe: usize) -> Result<(), ExitCode> {
+    let writer = open("pipe:writer/write", 0).unwrap();
+    let serial = open("serial:", 0).unwrap();
     let mut buf = [0u8; 1024];
+    read(writer, &mut buf).unwrap();
+    write(serial, &buf).unwrap();
 
-    match read(read_pipe, &mut buf) {
-        Ok(bytes_read) => {
-            let _message = &buf[..bytes_read];
-        }
-        Err(_) => {}
-    }
+    loop {}
 }

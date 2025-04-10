@@ -1,7 +1,10 @@
-use core::arch::naked_asm;
+use core::{arch::naked_asm, mem::offset_of};
 
 use crate::{
-    arch::x86::{gdt::GDT, structures::Scratch},
+    arch::x86::{
+        gdt::{ProcessorControlRegion, GDT},
+        structures::Scratch,
+    },
     pop_preserved, pop_scratch, push_preserved, push_scratch,
     sched::scheduler::{current_pid, current_task, remove_current_task},
     scheme::{schemes, CallerContext},
@@ -55,36 +58,34 @@ pub(super) fn init() {
 }
 
 #[naked]
+#[allow(named_asm_labels)]
 pub unsafe extern "C" fn syscall_instruction() {
     naked_asm!(
         "swapgs;",                    // Swap KGSBASE with GSBASE, allowing fast TSS access.
-        "2: jmp 2b",
-        "mov gs:0, rsp;",        // Save userspace stack pointer
-        "mov rsp, gs:16;",       // Load kernel stack pointer
+        "mov gs:[{sp}], rsp;",        // Save userspace stack pointer
+        "mov rsp, gs:[{ksp}];",       // Load kernel stack pointer
 
+        "push r11;",
+        "push rcx;",
+
+        // Push context registers
         push_scratch!(),
-        push_preserved!(),
 
-        // Call C handler
-        "mov rsp, rdi",                  // Pass register state as argument
-        "call {handler}",
+        "mov rdi, rsp;",
+        "call {handler};",
 
-        // Restore everything
-        pop_preserved!(),
         pop_scratch!(),
-        "pop rax",                        // Get return value
 
-        // Restore user context
-        "pop r11",                        // Restore user RFLAGS
-        "pop rcx",                        // Restore user RIP
+        // Restore user GSBASE by swapping GSBASE and KGSBASE.
+        "swapgs;",
 
-        // Switch back to user stack
-        "mov gs:8, rsp",                // Restore user RSP from CPU_LOCAL_STATE.user_rsp
-
-        "swapgs",                          // Swap back to user GS base
-        "sysretq",                         // Return to user mode
-
+        "pop rcx",
+        "pop r11;",
+        "mov rsp, gs:[{sp}];",        // Restore userspace stack pointer
+        "sysretq;",                 // Return into userspace; RCX=>RIP,R11=>RFLAGS
         handler = sym handle_syscall,
+        sp = const(offset_of!(ProcessorControlRegion, user_rsp)),
+        ksp = const(offset_of!(ProcessorControlRegion, kernel_rsp)),
     );
 }
 

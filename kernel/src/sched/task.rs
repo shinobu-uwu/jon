@@ -1,5 +1,3 @@
-use core::arch::{asm, naked_asm};
-
 use alloc::vec::Vec;
 use bitmap_allocator::BitAlloc;
 use libjon::fd::FileDescriptorId;
@@ -13,7 +11,7 @@ use crate::{
         stack::Stack,
         PAGE_SIZE,
     },
-    sched::{pid::Pid, PID_ALLOCATOR},
+    sched::pid::Pid,
 };
 
 use super::{fd::FileDescriptor, memory::MemoryDescriptor};
@@ -54,7 +52,10 @@ pub enum State {
 
 impl Task {
     pub fn new(binary: &[u8]) -> Self {
-        let pid = Pid::new(PID_ALLOCATOR.lock().alloc().unwrap());
+        // unsafe {
+        //     core::arch::asm!("2: jmp 2b");
+        // }
+        let pid = Pid::new(Pid::next_pid());
         debug!("Creating task with PID {}", pid);
         let start_block = (pid.as_usize() - 1) * 2;
         let kernel_stack = Stack::new(
@@ -106,15 +107,4 @@ impl Task {
     pub fn remove_file(&mut self, descriptor_id: FileDescriptorId) {
         self.fds.retain(|fd| fd.id != descriptor_id);
     }
-}
-
-impl Drop for Task {
-    fn drop(&mut self) {
-        PID_ALLOCATOR.lock().dealloc(self.pid.as_usize());
-    }
-}
-
-#[naked]
-unsafe extern "C" fn idle() {
-    naked_asm!("2: hlt; jmp 2b");
 }

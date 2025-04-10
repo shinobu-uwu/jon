@@ -49,6 +49,10 @@ unsafe extern "C" fn kmain() -> ! {
     syscall::init();
     sched::scheduler::init();
     let task = Task::new(include_bytes!(
+        "../../drivers/writer/target/x86_64-unknown-none/release/writer"
+    ));
+    add_task(task);
+    let task = Task::new(include_bytes!(
         "../../drivers/reader/target/x86_64-unknown-none/release/reader"
     ));
     add_task(task);

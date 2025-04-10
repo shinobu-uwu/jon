@@ -19,12 +19,15 @@ const HIGH_PRIORITY_BONUS: u64 = 15;
 const LOW_PRIORITY_PENALTY: u64 = 5;
 
 pub unsafe fn init() {
+    debug!("Initializing scheduler");
     if IDLE_PID.is_none() {
+        debug!("Creating idle task");
         let task = Task::idle();
         let pid = task.pid;
         TASKS.insert(pid, task);
         IDLE_PID = Some(pid);
     }
+    debug!("Scheduler initialized");
 }
 
 pub unsafe fn schedule(stack_frame: &Registers) {

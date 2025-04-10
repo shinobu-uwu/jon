@@ -9,7 +9,7 @@ override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval 
 $(call USER_VARIABLE,KARCH,x86_64)
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-$(call USER_VARIABLE,QEMUFLAGS,-m 2G -serial stdio -display none -s -smp cpus=2,threads=2)
+$(call USER_VARIABLE,QEMUFLAGS,-m 2G -no-reboot -serial stdio -display none -s -smp cpus=2,threads=2)
 
 override IMAGE_NAME := template-$(KARCH)
 

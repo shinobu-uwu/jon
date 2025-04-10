@@ -1,17 +1,26 @@
 use core::mem::offset_of;
 use core::ptr::addr_of;
-use core::usize;
+use core::{arch, usize};
 
-use log::debug;
+use log::{debug, info};
 use x86_64::instructions::tables::load_tss;
-use x86_64::registers::segmentation::{Segment, CS, SS};
+use x86_64::registers::model_specific::{GsBase, KernelGsBase, Msr};
+use x86_64::registers::segmentation::{Segment, CS, GS, SS};
 use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector};
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
 
+use crate::memory::address::VirtualAddress;
+
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+const IA32_GS_BASE: u32 = 0xC0000101;
+const IA32_KERNEL_GS_BASE: u32 = 0xC0000102;
 
 pub static mut TSS: TaskStateSegment = TaskStateSegment::new();
+static mut PCR: ProcessorControlRegion = ProcessorControlRegion {
+    user_rsp: 0,
+    kernel_rsp: 0,
+};
 
 pub static mut GDT: (GlobalDescriptorTable, Selectors) = {
     let mut gdt = GlobalDescriptorTable::new();
@@ -31,6 +40,12 @@ pub static mut GDT: (GlobalDescriptorTable, Selectors) = {
         },
     )
 };
+
+#[repr(C)]
+pub struct ProcessorControlRegion {
+    pub user_rsp: u64,
+    pub kernel_rsp: u64,
+}
 
 #[repr(C)]
 pub struct Selectors {
@@ -67,12 +82,28 @@ pub fn init() {
         SS::set_reg(GDT.1.kernel_data_selector);
         load_tss(tss_selector);
 
-        let tss_addr = addr_of!(TSS) as u64;
-        let gs_base = tss_addr + offset_of!(TaskStateSegment, privilege_stack_table) as u64;
+        let pcr_addr = addr_of!(PCR) as u64;
 
-        use x86_64::registers::model_specific::GsBase;
-        GsBase::write(VirtAddr::new(gs_base));
+        core::arch::asm!(
+            "wrmsr",
+            in("rcx") IA32_KERNEL_GS_BASE,
+            in("rax") pcr_addr,
+            in("rdx") pcr_addr >> 32,
+        );
+        core::arch::asm!(
+            "wrmsr",
+            in("rcx") IA32_GS_BASE,
+            in("rax") pcr_addr,
+            in("rdx") pcr_addr >> 32,
+        );
     }
 
     debug!("GDT loaded");
+}
+
+pub fn set_tss_kernel_stack(stack: VirtualAddress) {
+    unsafe {
+        TSS.privilege_stack_table[0] = VirtAddr::new(stack.as_u64());
+        PCR.kernel_rsp = stack.as_u64();
+    }
 }

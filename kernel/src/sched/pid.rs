@@ -3,9 +3,19 @@ use core::{fmt::Display, usize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pid(usize);
 
+static mut NEXT_PID: usize = 1;
+
 impl Pid {
     pub const fn new(pid: usize) -> Self {
         Self(pid)
+    }
+
+    pub fn next_pid() -> usize {
+        unsafe {
+            let pid = NEXT_PID;
+            NEXT_PID += 1;
+            pid
+        }
     }
 
     pub const fn is_root(&self) -> bool {

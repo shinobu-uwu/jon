@@ -1,6 +1,7 @@
 use core::arch::asm;
 
-use gdt::TSS;
+use gdt::{set_tss_kernel_stack, TSS};
+use log::info;
 use structures::Registers;
 use x86_64::VirtAddr;
 
@@ -24,8 +25,7 @@ pub unsafe fn switch_to(prev: Option<&mut Task>, next: &Task, current_stack_fram
         save(&mut t.context, current_stack_frame);
     }
 
-    TSS.privilege_stack_table[0] = VirtAddr::new(next.kernel_stack.top().as_u64());
-    TSS.privilege_stack_table[2] = VirtAddr::new(next.user_stack.top().as_u64());
+    set_tss_kernel_stack(next.kernel_stack.top());
     restore(&next.context);
 }
 
@@ -60,12 +60,6 @@ unsafe fn restore(context: &Registers) -> ! {
     const IRET_OFFSET: u8 = 0x78;
     const SS_OFFSET: u8 = IRET_OFFSET + 0x20;
     asm!(
-        // Segment registers
-        "mov ds, [r12 + {ss_offset}]",
-        "mov es, [r12 + {ss_offset}]",
-        "mov fs, [r12 + {ss_offset}]",
-        "mov gs, [r12 + {ss_offset}]",
-
         // Setup iret stack frame first before we touch any registers
         "push [r12 + {ss_offset}]",          // SS
         "push [r12 + {iret_offset} + 0x18]", // RSP
