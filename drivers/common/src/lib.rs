@@ -4,6 +4,7 @@ use core::{arch::asm, fmt::Write};
 
 use heapless::String;
 
+pub mod ipc;
 pub mod syscall;
 
 #[derive(Debug)]
@@ -15,6 +16,14 @@ pub struct ModuleInfo {
 
 #[derive(Debug)]
 pub struct ExitCode(pub usize);
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Message {
+    pub sender: usize,
+    pub receiver: usize,
+    pub data: usize,
+}
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
@@ -66,19 +75,31 @@ pub fn exit(code: ExitCode) -> ! {
 #[macro_export]
 macro_rules! module_entrypoint {
     ($name:expr, $description:expr, $version:expr, $entrypoint:ident) => {
+        use core::mem::size_of;
+
         #[no_mangle]
         pub extern "C" fn _start() -> ! {
             let read_pipe =
                 jon_common::syscall::fs::open(concat!("pipe:", $name, "/read"), 0x1).unwrap();
             let write_pipe =
                 jon_common::syscall::fs::open(concat!("pipe:", $name, "/write"), 0x2).unwrap();
+            let mut buf = [0u8; 0x1000]; // Buffer size: 4KB
 
-            let exit_code = match $entrypoint(read_pipe, write_pipe) {
-                Ok(_) => ExitCode(0),
-                Err(code) => code,
-            };
-
-            $crate::exit(exit_code);
+            loop {
+                match $crate::syscall::fs::read(read_pipe, &mut buf) {
+                    Ok(size) => match $entrypoint(&buf[..size]) {
+                        Ok(()) => {}
+                        Err(e) => $crate::exit(e),
+                    },
+                    Err(errno) => {
+                        if errno == 0x0b {
+                            // EAGAIN
+                            continue;
+                        }
+                        // ...
+                    }
+                };
+            }
         }
     };
 }
