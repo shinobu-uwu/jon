@@ -1,12 +1,12 @@
 #![no_std]
 #![no_main]
 
-use jon_common::{ExitCode, module_entrypoint};
+use jon_common::{ExitCode, daemon_entrypoint};
 
-module_entrypoint!("reincarnation", "Reincarnation server", "0.1.0", main);
+daemon_entrypoint!("reincarnation", "Reincarnation server", "0.1.0", main);
 
-static NAMES: [Option<(&str, usize)>; 64] = [None; 64];
+static NAMES: [Option<(&str, usize)>; 8] = [None; 8];
 
-fn main(_buf: &[u8]) -> Result<(), ExitCode> {
-    Ok(())
+fn main() -> Result<&'static str, ExitCode> {
+    Ok("Hello, from reincarnation!")
 }

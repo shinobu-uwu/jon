@@ -91,7 +91,6 @@ pub unsafe extern "C" fn syscall_instruction() {
 
 pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
     let scratch = &(*registers);
-    debug!("Scratch: {:#x?}", scratch);
     let (syscall_number, arg1, arg2, arg3, arg4, arg5, arg6) = (
         scratch.rax as usize,
         scratch.rdi as usize,

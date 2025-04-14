@@ -37,7 +37,7 @@ impl KernelScheme for SerialScheme {
         _buf: &mut [u8],
         _count: usize,
     ) -> Result<usize, i32> {
-        Err(-38)
+        Ok(2)
     }
     fn write(
         &self,

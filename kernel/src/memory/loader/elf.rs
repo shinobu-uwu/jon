@@ -1,4 +1,7 @@
-use goblin::elf::{self, program_header::ProgramHeader, Elf};
+use goblin::{
+    elf::{self, program_header::ProgramHeader, reloc::*, Elf},
+    elf64::reloc::Rela,
+};
 use log::debug;
 
 use crate::{
@@ -76,6 +79,8 @@ impl ElfLoader {
 
         Ok(())
     }
+
+    pub fn apply_relocations(&self, elf: &Elf, binary: &[u8], base_address: usize) {}
 }
 
 impl Loader for ElfLoader {
@@ -87,7 +92,7 @@ impl Loader for ElfLoader {
         let elf = Elf::parse(binary).map_err(|_| LoadingError::ParseError)?;
         let mut memory_descriptor = MemoryDescriptor::new();
 
-        for ph in elf.program_headers {
+        for ph in elf.program_headers.iter() {
             if ph.p_type != elf::program_header::PT_LOAD {
                 continue;
             }
@@ -108,6 +113,9 @@ impl Loader for ElfLoader {
 
             memory_descriptor.add_region(start, end, flags, area_type);
         }
+
+        self.process_relocations(base_address, &elf)
+            .map_err(|_| LoadingError::ParseError)?;
 
         Ok((memory_descriptor, base_address.offset(elf.entry as usize)))
     }

@@ -17,21 +17,20 @@ pub struct ModuleInfo {
 #[derive(Debug)]
 pub struct ExitCode(pub usize);
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct Message {
-    pub sender: usize,
-    pub receiver: usize,
-    pub data: usize,
-}
-
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    loop {}
+    let serial = match syscall::fs::open("serial:", 0x0) {
+        Ok(fd) => fd,
+        Err(_) => loop {},
+    };
+    match syscall::fs::write(serial, b"Task panicked") {
+        Ok(_) => exit(ExitCode(1)),
+        Err(_) => loop {},
+    };
 }
 
 #[inline(always)]
-pub unsafe extern "sysv64" fn syscall(
+pub fn syscall(
     number: usize,
     arg1: usize,
     arg2: usize,
@@ -40,9 +39,19 @@ pub unsafe extern "sysv64" fn syscall(
     arg5: usize,
     arg6: usize,
 ) -> Result<usize, i32> {
-    let result: isize;
+    // Result doesn't have a stable representation, so we can't return it from an extern "sysv64"
+    // function
+    unsafe extern "sysv64" fn inner_syscall(
+        number: usize,
+        arg1: usize,
+        arg2: usize,
+        arg3: usize,
+        arg4: usize,
+        arg5: usize,
+        arg6: usize,
+    ) -> isize {
+        let result: isize;
 
-    unsafe {
         asm!(
             "syscall",
             in("rax") number,
@@ -56,7 +65,11 @@ pub unsafe extern "sysv64" fn syscall(
             out("r11") _,
             lateout("rax") result,
         );
+
+        result
     }
+
+    let result = unsafe { inner_syscall(number, arg1, arg2, arg3, arg4, arg5, arg6) };
 
     if result < 0 {
         Err(-result as i32)
@@ -66,40 +79,26 @@ pub unsafe extern "sysv64" fn syscall(
 }
 
 pub fn exit(code: ExitCode) -> ! {
-    unsafe {
-        syscall(0, code.0, 0, 0, 0, 0, 0).unwrap();
-    }
+    syscall(0, code.0, 0, 0, 0, 0, 0).unwrap();
     loop {}
 }
 
 #[macro_export]
-macro_rules! module_entrypoint {
+macro_rules! daemon_entrypoint {
     ($name:expr, $description:expr, $version:expr, $entrypoint:ident) => {
         use core::mem::size_of;
 
         #[no_mangle]
         pub extern "C" fn _start() -> ! {
+            let serial = $crate::syscall::fs::open("serial:", 0x0).unwrap();
             let read_pipe =
-                jon_common::syscall::fs::open(concat!("pipe:", $name, "/read"), 0x1).unwrap();
+                $crate::syscall::fs::open(concat!("pipe:", $name, "/read"), 0x1).unwrap();
             let write_pipe =
-                jon_common::syscall::fs::open(concat!("pipe:", $name, "/write"), 0x2).unwrap();
-            let mut buf = [0u8; 0x1000]; // Buffer size: 4KB
+                $crate::syscall::fs::open(concat!("pipe:", $name, "/write"), 0x2).unwrap();
+            let mut buf = [0u8; 256];
+            $crate::syscall::fs::read(write_pipe, &mut buf).unwrap();
 
-            loop {
-                match $crate::syscall::fs::read(read_pipe, &mut buf) {
-                    Ok(size) => match $entrypoint(&buf[..size]) {
-                        Ok(()) => {}
-                        Err(e) => $crate::exit(e),
-                    },
-                    Err(errno) => {
-                        if errno == 0x0b {
-                            // EAGAIN
-                            continue;
-                        }
-                        // ...
-                    }
-                };
-            }
+            loop {}
         }
     };
 }

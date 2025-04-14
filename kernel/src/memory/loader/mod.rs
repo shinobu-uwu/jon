@@ -1,5 +1,7 @@
 use core::{error::Error, fmt::Display};
 
+use alloc::string::String;
+
 use crate::sched::memory::MemoryDescriptor;
 
 use super::address::VirtualAddress;
@@ -20,6 +22,7 @@ pub enum LoadingError {
     MemoryAllocationError,
     MappingError,
     InvalidInput,
+    SymbolNotFound(String),
 }
 
 impl Display for LoadingError {
@@ -29,6 +32,7 @@ impl Display for LoadingError {
             LoadingError::MemoryAllocationError => write!(f, "Failed to allocate memory"),
             LoadingError::MappingError => write!(f, "Failed to map memory"),
             LoadingError::InvalidInput => write!(f, "Invalid input"),
+            LoadingError::SymbolNotFound(s) => write!(f, "Symbol not found: {}", s),
         }
     }
 }

@@ -1,7 +1,4 @@
-use core::{
-    ptr::copy_nonoverlapping,
-    sync::atomic::{self, AtomicUsize},
-};
+use core::ptr::copy_nonoverlapping;
 
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use libjon::{
