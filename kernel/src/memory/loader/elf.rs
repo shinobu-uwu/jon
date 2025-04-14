@@ -1,15 +1,12 @@
-use goblin::{
-    elf::{self, program_header::ProgramHeader, reloc::*, Elf},
-    elf64::reloc::Rela,
-};
-use log::debug;
+use goblin::elf::{self, program_header::ProgramHeader, reloc::R_X86_64_RELATIVE, Elf};
+use log::{debug, error};
 
 use crate::{
     arch::x86::memory::{PMM, VMM},
     memory::{
         address::VirtualAddress,
         loader::{Loader, LoadingError},
-        paging::{align_down, PageFlags},
+        paging::{align_down, align_up, PageFlags},
         physical::PhysicalMemoryManager,
         PAGE_SIZE,
     },
@@ -40,10 +37,9 @@ impl ElfLoader {
         }
 
         let vaddr = align_down(segment.p_vaddr as usize, PAGE_SIZE);
-        let mapped_size = align_down(
-            segment.p_memsz as usize + (segment.p_vaddr as usize % PAGE_SIZE),
-            PAGE_SIZE,
-        ) + PAGE_SIZE;
+        let file_offset = segment.p_vaddr as usize % PAGE_SIZE;
+        let total_size = segment.p_memsz as usize + file_offset;
+        let mapped_size = align_up(total_size, PAGE_SIZE);
 
         let phys = PMM
             .lock()
@@ -65,7 +61,8 @@ impl ElfLoader {
         }
 
         if segment.p_memsz > segment.p_filesz {
-            let bss_start = virt.offset(segment.p_filesz as usize).as_u64();
+            let bss_start =
+                base_address.as_usize() + segment.p_vaddr as usize + segment.p_filesz as usize;
             let bss_size = segment.p_memsz - segment.p_filesz;
             debug!(
                 "Zeroing BSS at {:#x?} with size {:#x?}",
@@ -79,8 +76,20 @@ impl ElfLoader {
 
         Ok(())
     }
-
-    pub fn apply_relocations(&self, elf: &Elf, binary: &[u8], base_address: usize) {}
+    fn apply_relocations(&self, elf: &Elf, base_address: usize) {
+        for rela in &elf.dynrels {
+            if rela.r_type == R_X86_64_RELATIVE {
+                debug!("Applying relocation: {:#x?}", rela);
+                let reloc_addr = base_address + rela.r_offset as usize;
+                let value = base_address + rela.r_addend.unwrap_or(0) as usize;
+                unsafe {
+                    core::ptr::write_unaligned(reloc_addr as *mut usize, value);
+                }
+            } else {
+                error!("Unsupported relocation type: {}", rela.r_type);
+            }
+        }
+    }
 }
 
 impl Loader for ElfLoader {
@@ -113,9 +122,6 @@ impl Loader for ElfLoader {
 
             memory_descriptor.add_region(start, end, flags, area_type);
         }
-
-        self.process_relocations(base_address, &elf)
-            .map_err(|_| LoadingError::ParseError)?;
 
         Ok((memory_descriptor, base_address.offset(elf.entry as usize)))
     }

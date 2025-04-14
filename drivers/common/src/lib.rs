@@ -87,16 +87,17 @@ pub fn exit(code: ExitCode) -> ! {
 macro_rules! daemon_entrypoint {
     ($name:expr, $description:expr, $version:expr, $entrypoint:ident) => {
         use core::mem::size_of;
+        use $crate::syscall::fs::*;
 
         #[no_mangle]
         pub extern "C" fn _start() -> ! {
-            let serial = $crate::syscall::fs::open("serial:", 0x0).unwrap();
-            let read_pipe =
-                $crate::syscall::fs::open(concat!("pipe:", $name, "/read"), 0x1).unwrap();
-            let write_pipe =
-                $crate::syscall::fs::open(concat!("pipe:", $name, "/write"), 0x2).unwrap();
+            let serial = open("serial:", 0x0).unwrap();
+            let read_pipe = open(concat!("pipe:", $name, "/read"), 0x1).unwrap();
+            let write_pipe = open(concat!("pipe:", $name, "/write"), 0x2).unwrap();
             let mut buf = [0u8; 256];
-            $crate::syscall::fs::read(write_pipe, &mut buf).unwrap();
+            let a = $entrypoint();
+            write(serial, a.unwrap().as_bytes()).unwrap();
+            read(serial, &mut buf).unwrap();
 
             loop {}
         }
