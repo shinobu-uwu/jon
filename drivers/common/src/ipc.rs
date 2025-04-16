@@ -9,4 +9,5 @@ pub enum MessageType {
     Read,
     Write,
     Delete,
+    Heartbeat,
 }

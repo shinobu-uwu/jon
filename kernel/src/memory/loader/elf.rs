@@ -52,32 +52,28 @@ impl ElfLoader {
             .map_range(virt, phys, mapped_size, flags)
             .map_err(|_| LoadingError::MappingError)?;
         unsafe {
-            debug!("Copying segment to {:#x?}", virt);
-            core::ptr::copy_nonoverlapping(
-                binary.as_ptr().offset(segment.p_offset as isize),
-                (base_address.as_usize() + segment.p_vaddr as usize) as *mut u8,
-                segment.p_filesz as usize,
-            );
+            let src = binary.as_ptr().offset(segment.p_offset as isize);
+            let dest = (base_address.as_usize() + segment.p_vaddr as usize) as *mut u8;
+            debug!("Copying {} bytes to {:p}", segment.p_filesz, dest);
+            core::ptr::copy_nonoverlapping(src, dest, segment.p_filesz as usize);
         }
 
         if segment.p_memsz > segment.p_filesz {
             let bss_start =
                 base_address.as_usize() + segment.p_vaddr as usize + segment.p_filesz as usize;
-            let bss_size = segment.p_memsz - segment.p_filesz;
-            debug!(
-                "Zeroing BSS at {:#x?} with size {:#x?}",
-                bss_start, bss_size
-            );
+            let bss_size = (segment.p_memsz - segment.p_filesz) as usize;
 
+            debug!("Zeroing BSS at {:#x?} ({} bytes)", bss_start, bss_size);
             unsafe {
-                core::ptr::write_bytes(bss_start as *mut u8, 0, bss_size as usize);
+                core::ptr::write_bytes(bss_start as *mut u8, 0, bss_size);
             }
         }
 
         Ok(())
     }
+
     fn apply_relocations(&self, elf: &Elf, base_address: usize) {
-        for rela in &elf.dynrels {
+        for rela in &elf.dynrelas {
             if rela.r_type == R_X86_64_RELATIVE {
                 debug!("Applying relocation: {:#x?}", rela);
                 let reloc_addr = base_address + rela.r_offset as usize;
@@ -122,6 +118,8 @@ impl Loader for ElfLoader {
 
             memory_descriptor.add_region(start, end, flags, area_type);
         }
+
+        self.apply_relocations(&elf, base_address.as_usize());
 
         Ok((memory_descriptor, base_address.offset(elf.entry as usize)))
     }

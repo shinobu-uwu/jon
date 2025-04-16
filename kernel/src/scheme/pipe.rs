@@ -4,7 +4,7 @@ use alloc::{
     vec::Vec,
 };
 use libjon::{
-    errno::{EINVAL, ENOENT},
+    errno::{EAGAIN, EINVAL, ENOENT},
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
 use log::debug;
@@ -110,7 +110,7 @@ impl KernelScheme for PipeScheme {
         let pipe = pipes.get_mut(&descriptor_id).ok_or(ENOENT)?;
 
         debug!("Pipe len before pop: {}", pipe.buffer.len());
-        let message = pipe.buffer.pop_front().ok_or(0)?;
+        let message = pipe.buffer.pop_front().ok_or(EAGAIN)?;
         debug!("Pipe len after pop: {}", pipe.buffer.len());
 
         let bytes_to_read = count.min(message.len());

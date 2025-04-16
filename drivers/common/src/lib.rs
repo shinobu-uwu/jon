@@ -94,12 +94,28 @@ macro_rules! daemon_entrypoint {
             let serial = open("serial:", 0x0).unwrap();
             let read_pipe = open(concat!("pipe:", $name, "/read"), 0x1).unwrap();
             let write_pipe = open(concat!("pipe:", $name, "/write"), 0x2).unwrap();
-            let mut buf = [0u8; 256];
-            let a = $entrypoint();
-            write(serial, a.unwrap().as_bytes()).unwrap();
-            read(serial, &mut buf).unwrap();
+            let mut buf = [0u8; 512];
 
-            loop {}
+            loop {
+                match read(write_pipe, &mut buf) {
+                    Ok(size) => {
+                        let message: $crate::ipc::Message =
+                            unsafe { core::ptr::read(buf.as_ptr() as *const _) };
+
+                        match $entrypoint(message) {
+                            Ok(_) => write(serial, b"Success").unwrap(),
+                            Err(errno) => write(serial, b"Error: ").unwrap(),
+                        };
+                    }
+                    Err(errno) => {
+                        if errno == 11 {
+                            // EAGAIN
+                            write(serial, b"Pipe is empty").unwrap();
+                            continue;
+                        }
+                    }
+                }
+            }
         }
     };
 }
