@@ -42,7 +42,7 @@ impl KernelScheme for PipeScheme {
             Some(fd) => {
                 debug!("Found existing pipe: {:?}", fd);
 
-                if !flags.contains(FileDescriptorFlags::O_CREAT) {
+                if flags.contains(FileDescriptorFlags::O_CREAT) {
                     return Err(EINVAL);
                 }
 
@@ -72,7 +72,7 @@ impl KernelScheme for PipeScheme {
             None => {
                 debug!("Creating new pipe");
 
-                if flags.contains(FileDescriptorFlags::O_CREAT) {
+                if !flags.contains(FileDescriptorFlags::O_CREAT) {
                     return Err(ENOENT);
                 }
 

@@ -2,7 +2,7 @@ use core::ffi::CStr;
 
 use crate::{
     exit,
-    ipc::Message,
+    ipc::{Message, MessageType},
     syscall::{self, fs::read},
     ExitCode,
 };
@@ -54,6 +54,13 @@ impl Daemon {
                     syscall::fs::write(self.serial, b"Received message\n").unwrap();
                     let result_buffer = &buf[..bytes_read];
                     let message = Message::from_bytes(result_buffer);
+
+                    if let MessageType::Heartbeat = message.message_type {
+                        syscall::fs::write(self.serial, b"Heartbeat received\n").unwrap();
+                        syscall::fs::write(self.write_pipe, &[0x44]).unwrap();
+                        continue;
+                    }
+
                     match (self.callback)(self, message) {
                         Ok(_) => todo!(),
                         Err(_) => todo!(),

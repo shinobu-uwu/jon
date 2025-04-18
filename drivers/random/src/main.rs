@@ -1,10 +1,17 @@
 #![no_std]
 #![no_main]
 
-use jon_common::{ExitCode, daemon_entrypoint, ipc::Message};
+use jon_common::{daemon::Daemon, ipc::Message};
 
-daemon_entrypoint!("random", "Random number generator", "0.1.0", main);
+#[unsafe(no_mangle)]
+pub extern "C" fn _start() -> ! {
+    let daemon = Daemon::new(main);
+    daemon.register("random");
+    daemon.start();
+}
 
-fn main(_message: Message) -> Result<(), ExitCode> {
-    todo!()
+fn main(_daemon: &Daemon, message: Message) -> Result<usize, i32> {
+    match message {
+        _ => Ok(10),
+    }
 }

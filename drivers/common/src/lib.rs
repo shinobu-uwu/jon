@@ -85,6 +85,6 @@ pub fn syscall(
 }
 
 pub fn exit(code: ExitCode) -> ! {
-    syscall(0, code.0, 0, 0, 0, 0, 0).unwrap();
+    syscall(93, code.0, 0, 0, 0, 0, 0).unwrap();
     loop {}
 }

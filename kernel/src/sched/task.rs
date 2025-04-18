@@ -97,7 +97,6 @@ impl Task {
     pub fn add_file(&mut self, descriptor: FileDescriptor) {
         debug!("Adding file descriptor: {:?}", descriptor);
         self.fds.push(descriptor);
-        debug!("FDs after adding: {:?}", self.fds);
         self.next_fd += 1;
     }
 

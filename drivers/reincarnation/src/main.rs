@@ -48,7 +48,7 @@ fn main(daemon: &Daemon, message: Message) -> Result<usize, i32> {
 
             names.insert(driver_name, message.origin).unwrap();
 
-            Err(-1) // ENOSPC
+            Ok(0)
         }
         jon_common::ipc::MessageType::Delete => todo!(),
         // heartbeats are handled by the daemon itself
