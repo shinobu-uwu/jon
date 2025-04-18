@@ -13,9 +13,9 @@ use core::arch::asm;
 
 use limine::request::{RequestsEndMarker, RequestsStartMarker, SmpRequest};
 use limine::BaseRevision;
-use log::{debug, error, info};
+use log::error;
 use output::logger;
-use sched::scheduler::add_task;
+use sched::scheduler;
 use sched::task::Task;
 use x86_64::instructions::interrupts::enable;
 
@@ -47,11 +47,11 @@ unsafe extern "C" fn kmain() -> ! {
     logger::init().unwrap();
     arch::init();
     syscall::init();
-    sched::scheduler::init();
+    scheduler::init();
     let task = Task::new(include_bytes!(
         "../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
     ));
-    add_task(task);
+    scheduler::add_task(task);
     enable();
 
     hcf();

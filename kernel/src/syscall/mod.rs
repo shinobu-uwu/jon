@@ -13,7 +13,7 @@ use libjon::{
     errno::ENOENT,
     fd::{FileDescriptorFlags, FileDescriptorId},
     path::Path,
-    syscall::{SYS_EXIT, SYS_OPEN, SYS_READ, SYS_WRITE},
+    syscall::{SYS_EXIT, SYS_GETPID, SYS_OPEN, SYS_READ, SYS_WRITE},
 };
 use log::debug;
 use x86_64::{
@@ -108,6 +108,7 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
         SYS_OPEN => sys_open(arg1, arg2, arg3),
         SYS_WRITE => sys_write(arg1, arg2, arg3),
         SYS_READ => sys_read(arg1, arg2, arg3),
+        SYS_GETPID => sys_getpid(),
         _ => {
             debug!("Invalid syscall number: {}", syscall_number);
             Err(ENOENT)
@@ -203,4 +204,11 @@ fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
     let buf = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, count) };
     debug!("Writing buffer {:x?} to fd: {:?}", buf, fd);
     scheme.write(fd.id, buf, count)
+}
+
+fn sys_getpid() -> SyscallResult {
+    let task = current_task().expect("ERROR: NO CURRENT TASK");
+    debug!("Current PID: {}", task.pid);
+
+    Ok(task.pid.as_usize())
 }

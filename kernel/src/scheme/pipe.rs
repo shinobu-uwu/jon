@@ -1,6 +1,7 @@
 use alloc::{
     boxed::Box,
     collections::{btree_map::BTreeMap, vec_deque::VecDeque},
+    format,
     vec::Vec,
 };
 use libjon::{
@@ -29,6 +30,7 @@ impl KernelScheme for PipeScheme {
         debug!("Opening  pipe: {}", path,);
         let task = get_task_mut(ctx.pid).ok_or(ENOENT)?;
         debug!("Found task: {}", task.pid);
+
         let mut paths = PATHS.write();
 
         let is_read = flags.contains(FileDescriptorFlags::O_RDONLY)
@@ -39,6 +41,10 @@ impl KernelScheme for PipeScheme {
         let fd = match paths.get(path.into()) {
             Some(fd) => {
                 debug!("Found existing pipe: {:?}", fd);
+
+                if !flags.contains(FileDescriptorFlags::O_CREAT) {
+                    return Err(EINVAL);
+                }
 
                 let mut pipes = PIPES.write();
                 let pipe = pipes.get_mut(fd).ok_or(ENOENT)?;
@@ -65,6 +71,11 @@ impl KernelScheme for PipeScheme {
             }
             None => {
                 debug!("Creating new pipe");
+
+                if flags.contains(FileDescriptorFlags::O_CREAT) {
+                    return Err(ENOENT);
+                }
+
                 let descriptor = FileDescriptor::new(ctx.scheme, flags);
                 let id = descriptor.id;
                 debug!("Inserting pipe: {:?}", id);
@@ -90,7 +101,8 @@ impl KernelScheme for PipeScheme {
                 task.add_file(descriptor);
 
                 debug!("Inserting path: {} -> {:?}", path, id);
-                paths.insert(path.into(), id);
+                let real_path = format!("{}/{}", task.pid, path);
+                paths.insert(real_path.into(), id);
 
                 id
             }

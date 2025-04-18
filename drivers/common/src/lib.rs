@@ -1,9 +1,9 @@
 #![no_std]
+#![feature(never_type)]
 
-use core::{arch::asm, fmt::Write};
+use core::arch::asm;
 
-use heapless::String;
-
+pub mod daemon;
 pub mod ipc;
 pub mod syscall;
 
@@ -17,13 +17,19 @@ pub struct ModuleInfo {
 #[derive(Debug)]
 pub struct ExitCode(pub usize);
 
+pub trait AsPtr {
+    type Ptr;
+
+    fn as_ptr(&self) -> Self::Ptr;
+}
+
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     let serial = match syscall::fs::open("serial:", 0x0) {
         Ok(fd) => fd,
         Err(_) => loop {},
     };
-    match syscall::fs::write(serial, b"Task panicked") {
+    match syscall::fs::write(serial, info.message().as_str().unwrap().as_bytes()) {
         Ok(_) => exit(ExitCode(1)),
         Err(_) => loop {},
     };
@@ -81,47 +87,4 @@ pub fn syscall(
 pub fn exit(code: ExitCode) -> ! {
     syscall(0, code.0, 0, 0, 0, 0, 0).unwrap();
     loop {}
-}
-
-#[macro_export]
-macro_rules! daemon_entrypoint {
-    ($name:expr, $description:expr, $version:expr, $entrypoint:ident) => {
-        use core::mem::size_of;
-        use $crate::syscall::fs::*;
-
-        #[no_mangle]
-        pub extern "C" fn _start() -> ! {
-            let serial = open("serial:", 0x0).unwrap();
-            let read_pipe = open(concat!("pipe:", $name, "/read"), 0x1).unwrap();
-            let write_pipe = open(concat!("pipe:", $name, "/write"), 0x2).unwrap();
-            let mut buf = [0u8; 512];
-
-            loop {
-                match read(write_pipe, &mut buf) {
-                    Ok(size) => {
-                        let message: $crate::ipc::Message =
-                            unsafe { core::ptr::read(buf.as_ptr() as *const _) };
-
-                        match $entrypoint(message) {
-                            Ok(_) => write(serial, b"Success").unwrap(),
-                            Err(errno) => write(serial, b"Error: ").unwrap(),
-                        };
-                    }
-                    Err(errno) => {
-                        if errno == 11 {
-                            // EAGAIN
-                            write(serial, b"Pipe is empty").unwrap();
-                            continue;
-                        }
-                    }
-                }
-            }
-        }
-    };
-}
-
-pub fn usize_to_str(value: usize) -> String<20> {
-    let mut s = String::<20>::new();
-    write!(&mut s, "{}", value).unwrap();
-    s
 }
