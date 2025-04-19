@@ -6,7 +6,10 @@ use libjon::{
 use log::{debug, info};
 use spinning_top::RwSpinlock;
 
-use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
+use crate::sched::{
+    fd::FileDescriptor,
+    scheduler::{current_pid, get_task_mut},
+};
 
 use super::{CallerContext, KernelScheme};
 
@@ -49,8 +52,9 @@ impl KernelScheme for SerialScheme {
         let descriptors = DESCRIPTORS.read();
         descriptors.get(&descriptor_id).ok_or(EINVAL)?;
 
+        let pid = current_pid().unwrap();
         let str = unsafe { core::str::from_utf8_unchecked(buf) };
-        info!("{str}");
+        info!("Task {pid} said: {str}");
 
         Ok(buf.len())
     }

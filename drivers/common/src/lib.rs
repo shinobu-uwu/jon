@@ -3,6 +3,9 @@
 
 use core::arch::asm;
 
+use core::fmt::{Arguments, Write};
+use heapless::String;
+
 pub mod daemon;
 pub mod ipc;
 pub mod syscall;
@@ -16,12 +19,6 @@ pub struct ModuleInfo {
 
 #[derive(Debug)]
 pub struct ExitCode(pub usize);
-
-pub trait AsPtr {
-    type Ptr;
-
-    fn as_ptr(&self) -> Self::Ptr;
-}
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {

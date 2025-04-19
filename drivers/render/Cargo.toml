@@ -1,10 +1,11 @@
 [package]
-name = "random"
+name = "render"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 jon_common = { path = "../common" }
+heapless = "0.8.0"
 spinning_top = "0.3.0"
 
 [profile.dev]

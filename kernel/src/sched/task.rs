@@ -1,5 +1,4 @@
 use alloc::vec::Vec;
-use bitmap_allocator::BitAlloc;
 use libjon::fd::FileDescriptorId;
 use log::debug;
 
@@ -17,7 +16,7 @@ use crate::{
 use super::{fd::FileDescriptor, memory::MemoryDescriptor};
 
 const KERNEL_STACK_START: usize = 0xffff888000000000;
-const STACK_SIZE: usize = 0x4000; // 16 KiB
+const STACK_SIZE: usize = 0x8000; // 32 KiB
 
 #[derive(Debug)]
 pub struct Task {
@@ -65,7 +64,7 @@ impl Task {
         );
         debug!("Finished creating stack");
         let mut context = Registers::new();
-        let bin_addr = VirtualAddress::new(0x400000 + (pid.as_usize() - 1) * PAGE_SIZE * 10); // TODO: Use a better dynamic address
+        let bin_addr = VirtualAddress::new(0x400000 + (pid.as_usize() - 1) * PAGE_SIZE * 20); // TODO: Use a better dynamic address
         let loader = ElfLoader::new();
         debug!("Loading binary");
         let (memory_descriptor, rip) = loader.load(bin_addr, binary).unwrap();

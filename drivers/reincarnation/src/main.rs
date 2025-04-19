@@ -3,11 +3,11 @@
 
 use core::ffi::CStr;
 
-use heapless::FnvIndexMap;
+use heapless::{FnvIndexMap, String};
 use jon_common::{ExitCode, daemon::Daemon, ipc::Message};
 use spinning_top::Spinlock;
 
-static NAMES: Spinlock<FnvIndexMap<&str, usize, 8>> = Spinlock::new(FnvIndexMap::new());
+static NAMES: Spinlock<FnvIndexMap<String<16>, usize, 8>> = Spinlock::new(FnvIndexMap::new());
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
@@ -18,40 +18,63 @@ pub extern "C" fn _start() -> ! {
 fn main(daemon: &Daemon, message: Message) -> Result<usize, i32> {
     match message.message_type {
         jon_common::ipc::MessageType::Read => {
-            let name_buffer = unsafe { core::slice::from_raw_parts(message.data as *const u8, 16) };
-            let driver_name = CStr::from_bytes_until_nul(name_buffer)
+            let daemon_name = CStr::from_bytes_until_nul(&message.data)
                 .unwrap()
                 .to_str()
                 .unwrap();
 
-            if driver_name == "exit" {
+            if daemon_name == "exit" {
                 daemon.exit(ExitCode(1))
             }
+            let mut name = String::<16>::new();
+            name.push_str(daemon_name).unwrap();
 
-            match NAMES.lock().get(driver_name) {
+            match NAMES.lock().get(&name) {
                 Some(pid) => Ok(*pid),
                 None => Err(-2),
             }
         }
         jon_common::ipc::MessageType::Write => {
-            let name_buffer = unsafe { core::slice::from_raw_parts(message.data as *const u8, 16) };
-            let driver_name = CStr::from_bytes_until_nul(name_buffer)
+            daemon.log(format_args!("Registering daemon"));
+            let daemon_name = CStr::from_bytes_until_nul(&message.data)
                 .unwrap()
                 .to_str()
                 .unwrap();
+            let mut name = String::<16>::new();
+            name.push_str(daemon_name).unwrap();
 
             let mut names = NAMES.lock();
 
-            if names.get(driver_name).is_some() {
+            if names.get(&name).is_some() {
+                daemon.log(format_args!("Daemon {} already registered", daemon_name));
                 return Err(-2); // EEXIST
             }
 
-            names.insert(driver_name, message.origin).unwrap();
+            names.insert(name, message.origin).unwrap();
+            daemon.log(format_args!("Registered daemon: {}", daemon_name));
 
             Ok(0)
         }
-        jon_common::ipc::MessageType::Delete => todo!(),
-        // heartbeats are handled by the daemon itself
+        jon_common::ipc::MessageType::Delete => {
+            let daemon_name = CStr::from_bytes_until_nul(&message.data)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            let mut name = String::<16>::new();
+            name.push_str(daemon_name).unwrap();
+
+            let mut names = NAMES.lock();
+
+            if names.remove(&name).is_none() {
+                daemon.log(format_args!("Daemon {} not registered", daemon_name));
+                return Err(-2); // ENOENT
+            }
+
+            daemon.log(format_args!("Unregistered daemon: {}", daemon_name));
+
+            Ok(0)
+        }
+        // heartbeats are handled by the daemon upstream
         jon_common::ipc::MessageType::Heartbeat => unreachable!(),
     }
 }
