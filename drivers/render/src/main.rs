@@ -21,59 +21,12 @@ const COUNT_MAX: usize = 1000;
 pub extern "C" fn _start() -> ! {
     init();
 
-    write(
-        *RANDOM_READ_FD.lock(),
-        Message::new(MessageType::Read, [0; 16]).to_bytes(),
-    )
-    .unwrap();
-
-    let mut buf = [0u8; 8];
-    let mut result = read(*RANDOM_WRITE_FD.lock(), &mut buf);
-
-    while let Err(err) = result {
-        if err == 11 {
-            // EAGAIN: no data yet, try again
-            result = read(*RANDOM_WRITE_FD.lock(), &mut buf);
-            continue;
-        } else {
-            log(format_args!("Error reading random: {:#?}", err));
-            break;
-        }
-    }
-
-    let bytes_read = result.unwrap();
-    let n = usize::from_ne_bytes(buf[..bytes_read].try_into().unwrap());
-    log(format_args!("Random number: {}", n));
-    let char = match n % 26 {
-        0 => 'A',
-        1 => 'B',
-        2 => 'C',
-        3 => 'D',
-        4 => 'E',
-        5 => 'F',
-        6 => 'G',
-        7 => 'H',
-        8 => 'I',
-        9 => 'J',
-        10 => 'K',
-        11 => 'L',
-        12 => 'M',
-        13 => 'N',
-        14 => 'O',
-        15 => 'P',
-        16 => 'Q',
-        17 => 'R',
-        18 => 'S',
-        19 => 'T',
-        20 => 'U',
-        21 => 'V',
-        22 => 'W',
-        23 => 'X',
-        24 => 'Y',
-        25 => 'Z',
-        _ => unreachable!(),
-    };
-    log(format_args!("Random char: {}", char));
+    log(format_args!("Random char: {}", random_char()));
+    log(format_args!("Random char: {}", random_char()));
+    log(format_args!("Random char: {}", random_char()));
+    log(format_args!("Random char: {}", random_char()));
+    log(format_args!("Random char: {}", random_char()));
+    log(format_args!("Random char: {}", random_char()));
 
     loop {}
 }
@@ -106,4 +59,63 @@ fn log(args: Arguments) {
     let mut message = String::<128>::new();
     write!(message, "{}", args).unwrap();
     write(*SERIAL_FD.lock(), message.as_bytes()).unwrap();
+}
+
+fn random_number() -> usize {
+    write(
+        *RANDOM_READ_FD.lock(),
+        Message::new(MessageType::Read, [0; 16]).to_bytes(),
+    )
+    .unwrap();
+
+    let mut buf = [0u8; 8];
+    let mut result = read(*RANDOM_WRITE_FD.lock(), &mut buf);
+
+    while let Err(err) = result {
+        if err == 11 {
+            // EAGAIN: no data yet, try again
+            result = read(*RANDOM_WRITE_FD.lock(), &mut buf);
+            continue;
+        } else {
+            log(format_args!("Error reading random: {:#?}", err));
+            break;
+        }
+    }
+
+    let bytes_read = result.unwrap();
+    usize::from_ne_bytes(buf[..bytes_read].try_into().unwrap())
+}
+
+fn random_char() -> char {
+    let n = random_number();
+
+    match n % 26 {
+        0 => 'A',
+        1 => 'B',
+        2 => 'C',
+        3 => 'D',
+        4 => 'E',
+        5 => 'F',
+        6 => 'G',
+        7 => 'H',
+        8 => 'I',
+        9 => 'J',
+        10 => 'K',
+        11 => 'L',
+        12 => 'M',
+        13 => 'N',
+        14 => 'O',
+        15 => 'P',
+        16 => 'Q',
+        17 => 'R',
+        18 => 'S',
+        19 => 'T',
+        20 => 'U',
+        21 => 'V',
+        22 => 'W',
+        23 => 'X',
+        24 => 'Y',
+        25 => 'Z',
+        _ => unreachable!(),
+    }
 }
