@@ -12,7 +12,7 @@ static RNG: Spinlock<XorShift64> = Spinlock::new(XorShift64::new());
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     let daemon = Daemon::new(main);
-    daemon.register("random");
+    daemon.register("random").unwrap();
     daemon.start();
 }
 

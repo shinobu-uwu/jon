@@ -1,7 +1,4 @@
-use core::{
-    arch::asm,
-    fmt::{Arguments, Write},
-};
+use core::fmt::{Arguments, Write};
 use heapless::String;
 
 use crate::{
@@ -34,13 +31,13 @@ impl Daemon {
         }
     }
 
-    pub fn run_once<F2: FnOnce()>(&self, callback: F2) {
-        callback();
+    pub fn run_once<F2: FnOnce(&Self)>(&self, callback: F2) {
+        callback(&self);
     }
 
     /// XXX: This should be at max 15 characters long, as reincarnation will use a 16 bytes
     /// buffer and will expect the last byte to be null
-    pub fn register(&self, name: &str) {
+    pub fn register(&self, name: &str) -> Result<(), i32> {
         self.log(format_args!("Registering daemon {}", name));
         let mut name_buf = [0u8; 16];
         let bytes = name.as_bytes();
@@ -51,6 +48,61 @@ impl Daemon {
         let message = Message::new(MessageType::Write, name_buf);
         syscall::fs::write(reincarnation_pipe, message.to_bytes()).unwrap();
         self.log(format_args!("Registered daemon {}", name));
+
+        let response_pipe = syscall::fs::open("pipe:2/write", 0x2).unwrap();
+        let mut buf = [0u8; 8];
+        let mut result = read(response_pipe, &mut buf);
+
+        while let Err(err) = result {
+            if err == 11 {
+                // EAGAIN: no data yet, try again
+                result = read(response_pipe, &mut buf);
+                continue;
+            }
+
+            self.log(format_args!("Error reading from reincarnation: {}", err));
+            return Err(err);
+        }
+
+        Ok(())
+    }
+
+    pub fn get_daemon_pid(&self, name: &str) -> Option<usize> {
+        self.log(format_args!("Getting daemon {} pid", name));
+
+        // build the 16‐byte, null‐terminated name buffer
+        let mut name_buf = [0u8; 16];
+        let bytes = name.as_bytes();
+        let len = bytes.len().min(15);
+        name_buf[..len].copy_from_slice(bytes);
+        name_buf[len] = 0;
+
+        let request_pipe = syscall::fs::open("pipe:2/read", 0x1).unwrap();
+        let message = Message::new(MessageType::Read, name_buf);
+        syscall::fs::write(request_pipe, message.to_bytes()).unwrap();
+        self.log(format_args!("Sent message to reincarnation"));
+
+        let response_pipe = syscall::fs::open("pipe:2/write", 0x2).unwrap();
+        let mut buf = [0u8; 8];
+
+        let mut result = read(response_pipe, &mut buf);
+        while let Err(err) = result {
+            if err == 11 {
+                // EAGAIN: no data yet, try again
+                result = read(response_pipe, &mut buf);
+                continue;
+            }
+
+            self.log(format_args!("Error reading from reincarnation: {}", err));
+            return None;
+        }
+
+        let bytes_read = result.unwrap();
+        self.log(format_args!("Read {} bytes from reincarnation", bytes_read));
+        self.log(format_args!("Buffer: {:x?}", buf));
+        let pid = usize::from_ne_bytes(buf[..bytes_read].try_into().unwrap());
+        self.log(format_args!("Daemon {} pid: {}", name, pid));
+        Some(pid)
     }
 
     pub fn start(&self) -> ! {
@@ -73,7 +125,7 @@ impl Daemon {
                     self.log(format_args!("Handling message: {:?}", message));
                     match (self.callback)(self, message) {
                         Ok(n) => {
-                            self.log(format_args!("Message handled"));
+                            self.log(format_args!("Message handled, result: {}", n));
                             syscall::fs::write(self.write_pipe, &n.to_ne_bytes()).unwrap();
                         }
                         Err(_) => todo!(),
@@ -99,4 +151,36 @@ impl Daemon {
         write!(message, "{}", args).unwrap();
         syscall::fs::write(self.serial, message.as_bytes()).unwrap();
     }
+}
+
+pub fn get_daemon_pid(name: &str) -> Option<usize> {
+    // build the 16‐byte, null‐terminated name buffer
+    let mut name_buf = [0u8; 16];
+    let bytes = name.as_bytes();
+    let len = bytes.len().min(15);
+    name_buf[..len].copy_from_slice(bytes);
+    name_buf[len] = 0;
+
+    let request_pipe = syscall::fs::open("pipe:2/read", 0x1).unwrap();
+    let message = Message::new(MessageType::Read, name_buf);
+    syscall::fs::write(request_pipe, message.to_bytes()).unwrap();
+
+    let response_pipe = syscall::fs::open("pipe:2/write", 0x2).unwrap();
+    let mut buf = [0u8; 8];
+
+    let mut result = read(response_pipe, &mut buf);
+    while let Err(err) = result {
+        if err == 11 {
+            // EAGAIN: no data yet, try again
+            result = read(response_pipe, &mut buf);
+            continue;
+        }
+
+        return None;
+    }
+
+    let bytes_read = result.unwrap();
+    let pid = usize::from_ne_bytes(buf[..bytes_read].try_into().unwrap());
+
+    Some(pid)
 }

@@ -6,7 +6,7 @@ use libjon::{
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
 use limine::request::FramebufferRequest;
-use log::debug;
+use log::{debug, info};
 use spinning_top::RwSpinlock;
 
 use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
@@ -67,8 +67,8 @@ impl KernelScheme for VgaScheme {
         _flags: FileDescriptorFlags,
         ctx: CallerContext,
     ) -> Result<FileDescriptorId, i32> {
-        let n = &path[2..];
-        let index: usize = n.parse().map_err(|_| EINVAL)?;
+        info!("Opening framebuffer: {}", path);
+        let index: usize = path.parse().map_err(|_| EINVAL)?;
         let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;
         self.framebuffers.clone().read().get(index).ok_or(ENOENT)?;
 

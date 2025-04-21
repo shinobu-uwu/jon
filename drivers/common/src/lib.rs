@@ -1,10 +1,7 @@
 #![no_std]
-#![feature(never_type)]
+#![feature(never_type, let_chains)]
 
 use core::arch::asm;
-
-use core::fmt::{Arguments, Write};
-use heapless::String;
 
 pub mod daemon;
 pub mod ipc;

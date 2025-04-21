@@ -1,4 +1,4 @@
-use log::debug;
+use log::{debug, info};
 
 use crate::{
     arch::x86::memory::{PMM, VMM},
@@ -14,7 +14,7 @@ pub struct Stack {
 
 impl Stack {
     pub fn new(bottom: VirtualAddress, size: usize) -> Self {
-        debug!(
+        info!(
             "Creating stack starting at {:#x?} with size {:#x}",
             bottom, size
         );

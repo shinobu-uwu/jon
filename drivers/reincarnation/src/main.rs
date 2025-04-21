@@ -22,6 +22,7 @@ fn main(daemon: &Daemon, message: Message) -> Result<usize, i32> {
                 .unwrap()
                 .to_str()
                 .unwrap();
+            daemon.log(format_args!("Getting daemon {}", daemon_name));
 
             if daemon_name == "exit" {
                 daemon.exit(ExitCode(1))
@@ -30,8 +31,17 @@ fn main(daemon: &Daemon, message: Message) -> Result<usize, i32> {
             name.push_str(daemon_name).unwrap();
 
             match NAMES.lock().get(&name) {
-                Some(pid) => Ok(*pid),
-                None => Err(-2),
+                Some(pid) => {
+                    daemon.log(format_args!(
+                        "Found daemon {} with pid {}",
+                        daemon_name, pid
+                    ));
+                    Ok(*pid)
+                }
+                None => {
+                    daemon.log(format_args!("Daemon {} not found", daemon_name));
+                    Err(-2) // ENOENT
+                }
             }
         }
         jon_common::ipc::MessageType::Write => {

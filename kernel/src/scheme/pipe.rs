@@ -8,7 +8,7 @@ use libjon::{
     errno::{EAGAIN, EINVAL, ENOENT},
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
-use log::debug;
+use log::{debug, info};
 use spinning_top::RwSpinlock;
 
 use crate::sched::{fd::FileDescriptor, pid::Pid, scheduler::get_task_mut};
@@ -156,6 +156,7 @@ impl KernelScheme for PipeScheme {
     }
 }
 
+#[derive(Debug)]
 pub struct Pipe {
     pub buffer: VecDeque<Vec<u8>>,
     readers: Vec<Pid>,

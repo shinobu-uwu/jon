@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use libjon::fd::FileDescriptorId;
-use log::debug;
+use log::{debug, info};
 
 use crate::{
     arch::x86::structures::Registers,
@@ -68,6 +68,7 @@ impl Task {
         let loader = ElfLoader::new();
         debug!("Loading binary");
         let (memory_descriptor, rip) = loader.load(bin_addr, binary).unwrap();
+        info!("Binary starting at: {:#x?}", rip);
 
         context.iret.rsp = user_stack.top().as_u64();
         context.iret.rip = rip.as_u64();

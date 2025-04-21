@@ -56,6 +56,10 @@ unsafe extern "C" fn kmain() -> ! {
         "../../drivers/random/target/x86_64-unknown-none/release/random"
     ));
     scheduler::add_task(task);
+    let task = Task::new(include_bytes!(
+        "../../drivers/render/target/x86_64-unknown-none/release/render"
+    ));
+    scheduler::add_task(task);
     enable();
 
     hcf();
