@@ -2,13 +2,14 @@
 #![no_main]
 
 use core::fmt::{Arguments, Write};
+use font_constants::BACKUP_CHAR;
 use heapless::String;
 use jon_common::{
-    daemon::{Daemon, get_daemon_pid},
+    daemon::get_daemon_pid,
     ipc::{Message, MessageType},
     syscall::fs::{open, read, write},
 };
-use noto_sans_mono_bitmap::{FontWeight, RasterHeight};
+use noto_sans_mono_bitmap::{FontWeight, RasterHeight, RasterizedChar, get_raster};
 use spinning_top::Spinlock;
 
 static FRAMEBUFFER_FD: Spinlock<usize> = Spinlock::new(0);
@@ -21,14 +22,18 @@ const COUNT_MAX: usize = 1000;
 pub extern "C" fn _start() -> ! {
     init();
 
-    log(format_args!("Random char: {}", random_char()));
-    log(format_args!("Random char: {}", random_char()));
-    log(format_args!("Random char: {}", random_char()));
-    log(format_args!("Random char: {}", random_char()));
-    log(format_args!("Random char: {}", random_char()));
-    log(format_args!("Random char: {}", random_char()));
+    let mut count: usize = 0;
 
-    loop {}
+    loop {
+        if count < COUNT_MAX {
+            count += 1;
+            continue;
+        }
+
+        count = 0;
+        let render_char = get_char_raster(random_char());
+        log(format_args!("Random char: "));
+    }
 }
 
 fn init() {
@@ -117,5 +122,58 @@ fn random_char() -> char {
         24 => 'Y',
         25 => 'Z',
         _ => unreachable!(),
+    }
+}
+
+mod font_constants {
+    use super::*;
+
+    pub const CHAR_RASTER_HEIGHT: RasterHeight = RasterHeight::Size16;
+
+    pub const BACKUP_CHAR: char = '�';
+
+    pub const FONT_WEIGHT: FontWeight = FontWeight::Regular;
+}
+
+/// Returns the raster of the given char or the raster of [`font_constants::BACKUP_CHAR`].
+fn get_char_raster(c: char) -> RasterizedChar {
+    fn get(c: char) -> Option<RasterizedChar> {
+        get_raster(
+            c,
+            font_constants::FONT_WEIGHT,
+            font_constants::CHAR_RASTER_HEIGHT,
+        )
+    }
+    get(c).unwrap_or_else(|| get(BACKUP_CHAR).expect("Should get raster of backup char."))
+}
+
+fn write_rendered_char_at(
+    framebuffer: &mut [u8],
+    rendered_char: RasterizedChar,
+    cursor_x: usize,
+    cursor_y: usize,
+    fb_width: usize,
+) {
+    for (dy, row) in rendered_char.raster().iter().enumerate() {
+        for (dx, byte) in row.iter().enumerate() {
+            write_pixel(framebuffer, cursor_x + dx, cursor_y + dy, *byte, fb_width);
+        }
+    }
+}
+
+fn write_pixel(
+    framebuffer: &mut [u8],
+    x: usize,
+    y: usize,
+    intensity: u8,
+    fb_width: usize, // real framebuffer width in pixels
+) {
+    let pixel_offset = y * fb_width + x;
+    let color = [intensity, intensity, intensity / 2, 0xFF]; // RGBA
+    let bytes_per_pixel = 4;
+    let byte_offset = pixel_offset * bytes_per_pixel;
+    if byte_offset + bytes_per_pixel <= framebuffer.len() {
+        framebuffer[byte_offset..(byte_offset + bytes_per_pixel)]
+            .copy_from_slice(&color[..bytes_per_pixel]);
     }
 }
