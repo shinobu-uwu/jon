@@ -13,5 +13,5 @@ pub fn read(fd: usize, buf: &mut [u8]) -> Result<usize, i32> {
 }
 
 pub fn lseek(fd: usize, offset: usize, whence: usize) -> Result<usize, i32> {
-    syscall(62, fd, offset, whence, 0, 0, 0)
+    syscall(8, fd, offset, whence, 0, 0, 0)
 }

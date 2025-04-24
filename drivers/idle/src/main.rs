@@ -1,14 +1,12 @@
 #![no_std]
 #![no_main]
 
-use jon_common::{
-    ExitCode, module_entrypoint,
-    syscall::fs::{open, read, write},
-};
-module_entrypoint!("idle", "idle task", "1.0.0", main);
-
-fn main(_: usize, _: usize) -> Result<(), ExitCode> {
+#[unsafe(no_mangle)]
+pub extern "C" fn _start() -> ! {
     loop {}
+}
 
-    Ok(())
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
 }

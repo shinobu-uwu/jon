@@ -7,7 +7,7 @@ edition = "2024"
 jon_common = { path = "../common" }
 heapless = "0.8.0"
 spinning_top = "0.3.0"
-noto-sans-mono-bitmap = "0.3.1"
+noto-sans-mono-bitmap = {version = "0.3.1", features=["all"]}
 
 [profile.dev]
 panic = "abort"

@@ -15,7 +15,7 @@ use libjon::{
     path::Path,
     syscall::{SYS_EXIT, SYS_GETPID, SYS_LSEEK, SYS_OPEN, SYS_READ, SYS_WRITE},
 };
-use log::debug;
+use log::{debug, error, info};
 use x86_64::{
     registers::{
         control::{Efer, EferFlags},
@@ -111,7 +111,7 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
         SYS_GETPID => sys_getpid(),
         SYS_LSEEK => sys_lseek(arg1, arg2, arg3),
         _ => {
-            debug!("Invalid syscall number: {}", syscall_number);
+            error!("Invalid syscall number: {}", syscall_number);
             Err(ENOENT)
         }
     };
@@ -227,6 +227,6 @@ fn sys_lseek(descriptor_id: usize, offset: usize, whence: usize) -> SyscallResul
     };
     let schemes = schemes();
     let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
-    debug!("Seeking in fd: {:?}", fd);
+    info!("Seeking in fd: {:?}", fd);
     scheme.lseek(fd.id, offset, whence.into(), ctx)
 }

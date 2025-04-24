@@ -16,7 +16,7 @@ use limine::BaseRevision;
 use log::error;
 use output::logger;
 use sched::scheduler;
-use sched::task::Task;
+use sched::task::{Priority, Task};
 use x86_64::instructions::interrupts::enable;
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -60,10 +60,11 @@ unsafe extern "C" fn kmain() -> ! {
         include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
     );
     scheduler::add_task(task);
-    let task = Task::new(
+    let mut task = Task::new(
         "task-manager",
         include_bytes!("../../drivers/render/target/x86_64-unknown-none/release/render"),
     );
+    task.priority = Priority::High;
     scheduler::add_task(task);
     enable();
 

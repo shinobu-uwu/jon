@@ -3,63 +3,55 @@
 
 mod fb;
 mod proc;
+mod ui;
 
 use core::{
     ffi::CStr,
     fmt::{Arguments, Write},
 };
-use fb::{FramebufferInfo, FramebufferWriter};
 use heapless::{String, Vec};
 use jon_common::{
     daemon::get_daemon_pid,
     ipc::{Message, MessageType},
     syscall::{
         self,
-        fs::{open, read, write},
+        fs::{lseek, open, read, write},
     },
 };
 use proc::Proc;
 use spinning_top::Spinlock;
+use ui::{Color, draw_char, draw_line, draw_text};
+
+const COUNT_MAX: usize = 10000000;
 
 static FRAMEBUFFER_FD: Spinlock<usize> = Spinlock::new(0);
 static RANDOM_READ_FD: Spinlock<usize> = Spinlock::new(0);
 static RANDOM_WRITE_FD: Spinlock<usize> = Spinlock::new(0);
 static PROC_FD: Spinlock<usize> = Spinlock::new(0);
 static SERIAL_FD: Spinlock<usize> = Spinlock::new(0);
-const COUNT_MAX: usize = 10000000;
 
 #[allow(static_mut_refs)]
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     init();
 
-    let mut count: usize = 0;
     let mut buf = [0u8; 128 * core::mem::size_of::<Proc>()];
+    let fd = *FRAMEBUFFER_FD.lock();
+    let bytes_read = syscall::fs::read(*PROC_FD.lock(), &mut buf).unwrap();
+    let procs_buf = &buf[..bytes_read];
+    let procs: Vec<Proc, 128> = procs_buf
+        .windows(core::mem::size_of::<Proc>())
+        .step_by(core::mem::size_of::<Proc>())
+        .map(|bytes| Proc::from_bytes(bytes))
+        .collect();
 
-    loop {
-        if count < COUNT_MAX {
-            count += 1;
-            continue;
-        }
-
-        count = 0;
-        let bytes_read = syscall::fs::read(*PROC_FD.lock(), &mut buf).unwrap();
-        let procs_buf = &buf[..bytes_read];
-        let procs: Vec<Proc, 128> = procs_buf
-            .windows(core::mem::size_of::<Proc>())
-            .step_by(core::mem::size_of::<Proc>())
-            .map(|bytes| Proc::from_bytes(bytes))
-            .collect();
-
-        for proc in procs.iter() {
-            let name = CStr::from_bytes_until_nul(&proc.name);
-            log(format_args!("Proc: {:?}", name));
-        }
-
-        write(*FRAMEBUFFER_FD.lock(), &buf[..bytes_read]).unwrap();
-
-        buf.fill(0);
+    for (i, proc) in procs.iter().enumerate() {
+        let name = CStr::from_bytes_until_nul(&proc.name).unwrap();
+        draw_text(fd, 0, i * 32 + 8, name.to_str().unwrap(), Color::Red);
+        log(format_args!("Proc: {:?}", name));
     }
+
+    loop {}
 }
 
 fn init() {
