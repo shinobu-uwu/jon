@@ -23,8 +23,8 @@ impl<'a> From<&'a str> for Path<'a> {
         let mut parts = value.split(":");
 
         Self {
-            scheme: parts.next().unwrap(),
-            path: parts.next().unwrap(),
+            scheme: parts.next().unwrap_or(""),
+            path: parts.next().unwrap_or(""),
         }
     }
 }

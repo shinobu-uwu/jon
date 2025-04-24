@@ -2,33 +2,38 @@
 #![no_main]
 
 mod fb;
+mod proc;
 
-use core::fmt::{Arguments, Write};
+use core::{
+    ffi::CStr,
+    fmt::{Arguments, Write},
+};
 use fb::{FramebufferInfo, FramebufferWriter};
-use heapless::String;
+use heapless::{String, Vec};
 use jon_common::{
     daemon::get_daemon_pid,
     ipc::{Message, MessageType},
-    syscall::fs::{open, read, write},
+    syscall::{
+        self,
+        fs::{open, read, write},
+    },
 };
-use noto_sans_mono_bitmap::{FontWeight, RasterHeight, RasterizedChar, get_raster};
+use proc::Proc;
 use spinning_top::Spinlock;
 
 static FRAMEBUFFER_FD: Spinlock<usize> = Spinlock::new(0);
 static RANDOM_READ_FD: Spinlock<usize> = Spinlock::new(0);
 static RANDOM_WRITE_FD: Spinlock<usize> = Spinlock::new(0);
+static PROC_FD: Spinlock<usize> = Spinlock::new(0);
 static SERIAL_FD: Spinlock<usize> = Spinlock::new(0);
-static mut LOCAL_FB: [u8; 64 * 64 * 4] = [0; 64 * 64 * 4];
 const COUNT_MAX: usize = 10000000;
 
-#[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
+#[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     init();
 
     let mut count: usize = 0;
-    let mut writer =
-        unsafe { FramebufferWriter::new(&mut LOCAL_FB, FramebufferInfo::new(64, 64, 64, 4)) };
 
     loop {
         if count < COUNT_MAX {
@@ -37,14 +42,18 @@ pub extern "C" fn _start() -> ! {
         }
 
         count = 0;
-        let char = random_char();
-        log(format_args!("Printing char {}", char));
-        writer.write_char(char).unwrap();
-        unsafe {
-            match write(*FRAMEBUFFER_FD.lock(), &LOCAL_FB) {
-                Ok(_) => log(format_args!("Wrote framebuffer")),
-                Err(err) => log(format_args!("Error writing framebuffer: {:#?}", err)),
-            }
+        let mut buf = [0u8; 128 * core::mem::size_of::<Proc>()];
+        let bytes_read = syscall::fs::read(*PROC_FD.lock(), &mut buf).unwrap();
+        let procs_buf = &buf[..bytes_read];
+        let procs: Vec<Proc, 128> = procs_buf
+            .windows(core::mem::size_of::<Proc>())
+            .step_by(core::mem::size_of::<Proc>())
+            .map(|bytes| Proc::from_bytes(bytes))
+            .collect();
+
+        for proc in procs.iter() {
+            let name = CStr::from_bytes_until_nul(&proc.name);
+            log(format_args!("Proc: {:?}", name));
         }
     }
 }
@@ -71,6 +80,8 @@ fn init() {
             log(format_args!("Random PID not found"));
         }
     }
+
+    *PROC_FD.lock() = open("proc:", 0x0).unwrap();
 }
 
 fn log(args: Arguments) {

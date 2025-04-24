@@ -1,4 +1,5 @@
 pub mod pipe;
+mod proc;
 mod schemes;
 pub mod serial;
 pub mod vga;
@@ -26,6 +27,7 @@ lazy_static! {
         list.add("pipe", Arc::new(pipe::PipeScheme));
         debug!("Adding serial scheme");
         list.add("serial", Arc::new(serial::SerialScheme));
+        list.add("proc", Arc::new(proc::ProcScheme));
         RwSpinlock::new(list)
     };
 }
@@ -62,6 +64,15 @@ pub trait KernelScheme: Send + Sync + 'static {
     ) -> Result<usize, i32>;
 
     fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32>;
+
+    fn lseek(
+        &self,
+        descriptor_id: FileDescriptorId,
+        offset: usize,
+        whence: i32,
+    ) -> Result<usize, i32> {
+        Err(38)
+    }
 }
 
 pub struct SchemeList {

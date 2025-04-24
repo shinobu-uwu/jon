@@ -2,6 +2,9 @@
 #![feature(never_type, let_chains)]
 
 use core::arch::asm;
+use core::fmt::Write;
+
+use heapless::String;
 
 pub mod daemon;
 pub mod ipc;
@@ -23,10 +26,25 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
         Ok(fd) => fd,
         Err(_) => loop {},
     };
-    match syscall::fs::write(serial, info.message().as_str().unwrap().as_bytes()) {
-        Ok(_) => exit(ExitCode(1)),
-        Err(_) => loop {},
+
+    let mut message = String::<256>::new();
+
+    match info.location() {
+        Some(l) => write!(
+            message,
+            "Error: {} at {} {}:{}",
+            info.message(),
+            l.file(),
+            l.line(),
+            l.column()
+        )
+        .unwrap(),
+        None => write!(message, "Error: {}", info.message().as_str().unwrap()).unwrap(),
     };
+
+    syscall::fs::write(serial, message.as_bytes()).unwrap();
+
+    exit(ExitCode(1));
 }
 
 #[inline(always)]

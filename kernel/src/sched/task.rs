@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use libjon::fd::FileDescriptorId;
 use log::{debug, info};
 
@@ -22,6 +22,7 @@ const STACK_SIZE: usize = 0x8000; // 32 KiB
 pub struct Task {
     pub pid: Pid,
     pub parent: Option<Pid>,
+    pub name: String,
     pub state: State,
     pub quantum: u64,
     pub priority: Priority,
@@ -41,7 +42,8 @@ pub enum Priority {
     High,
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
     Running,
     Blocked,
@@ -50,7 +52,7 @@ pub enum State {
 }
 
 impl Task {
-    pub fn new(binary: &[u8]) -> Self {
+    pub fn new(name: &str, binary: &[u8]) -> Self {
         let pid = Pid::new(Pid::next_pid());
         debug!("Creating task with PID {}", pid);
         let start_block = (pid.as_usize() - 1) * 2;
@@ -75,6 +77,7 @@ impl Task {
 
         Self {
             pid,
+            name: String::from(name),
             parent: None,
             kernel_stack,
             user_stack,
@@ -89,9 +92,10 @@ impl Task {
     }
 
     pub fn idle() -> Self {
-        Task::new(include_bytes!(
-            "../../../drivers/idle/target/x86_64-unknown-none/release/idle"
-        ))
+        Task::new(
+            "idle",
+            include_bytes!("../../../drivers/idle/target/x86_64-unknown-none/release/idle"),
+        )
     }
 
     pub fn add_file(&mut self, descriptor: FileDescriptor) {

@@ -1,4 +1,7 @@
-use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
+use alloc::{
+    collections::{btree_map::BTreeMap, vec_deque::VecDeque},
+    vec::Vec,
+};
 use log::{debug, info};
 
 use crate::arch::{self, x86::structures::Registers};
@@ -141,6 +144,10 @@ pub fn remove_task(pid: Pid) {
 
 pub fn current_pid() -> Option<Pid> {
     unsafe { CURRENT_PID }
+}
+
+pub fn get_tasks() -> Vec<&'static Task> {
+    unsafe { TASKS.values().collect() }
 }
 
 pub fn current_task() -> Option<&'static Task> {
