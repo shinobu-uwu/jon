@@ -69,9 +69,26 @@ pub trait KernelScheme: Send + Sync + 'static {
         &self,
         descriptor_id: FileDescriptorId,
         offset: usize,
-        whence: i32,
+        whence: Whence,
+        ctx: CallerContext,
     ) -> Result<usize, i32> {
         Err(38)
+    }
+}
+
+#[repr(i32)]
+pub enum Whence {
+    Set = 0,
+    Current = 1,
+}
+
+impl From<usize> for Whence {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => Whence::Set,
+            1 => Whence::Current,
+            _ => panic!("Invalid whence value"),
+        }
     }
 }
 

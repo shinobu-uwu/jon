@@ -9,9 +9,12 @@ use limine::request::FramebufferRequest;
 use log::{debug, info};
 use spinning_top::RwSpinlock;
 
-use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
+use crate::sched::{
+    fd::FileDescriptor,
+    scheduler::{self, get_task_mut},
+};
 
-use super::{CallerContext, KernelScheme};
+use super::{CallerContext, KernelScheme, Whence};
 
 #[used]
 #[link_section = ".requests"]
@@ -115,13 +118,53 @@ impl KernelScheme for VgaScheme {
         let framebuffer = framebuffers.get_mut(framebuffer_index.0).ok_or(ENOENT)?;
 
         let framebuffer_size = framebuffer.inner.len();
-        let bytes_to_write = count.min(framebuffer_size);
+        let task = scheduler::current_task().unwrap();
+        let offset = task
+            .fds
+            .iter()
+            .find(|f| f.id == descriptor_id)
+            .ok_or(ENOENT)?
+            .offset;
+
+        if offset >= framebuffer_size {
+            return Err(EINVAL);
+        }
+
+        let available_space = framebuffer_size - offset;
+        let bytes_to_write = count.min(available_space);
 
         unsafe {
-            copy_nonoverlapping(buf.as_ptr(), framebuffer.inner.as_mut_ptr(), bytes_to_write);
+            copy_nonoverlapping(
+                buf.as_ptr(),
+                framebuffer.inner.as_mut_ptr().add(offset),
+                bytes_to_write,
+            );
         }
 
         Ok(bytes_to_write)
+    }
+
+    fn lseek(
+        &self,
+        descriptor_id: FileDescriptorId,
+        offset: usize,
+        whence: Whence,
+        ctx: CallerContext,
+    ) -> Result<usize, i32> {
+        let task = get_task_mut(ctx.pid).ok_or(ENOENT)?;
+        let fd = task
+            .fds
+            .iter_mut()
+            .find(|f| f.id == descriptor_id)
+            .ok_or(ENOENT)?;
+        DESCRIPTORS.read().get(&descriptor_id).ok_or(ENOENT)?;
+
+        match whence {
+            Whence::Set => fd.offset = offset,
+            Whence::Current => fd.offset += offset,
+        }
+
+        Ok(fd.offset)
     }
 
     fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32> {

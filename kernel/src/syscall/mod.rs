@@ -5,15 +5,15 @@ use crate::{
         gdt::{ProcessorControlRegion, GDT},
         structures::Scratch,
     },
-    pop_preserved, pop_scratch, push_preserved, push_scratch,
+    pop_scratch, push_scratch,
     sched::scheduler::{current_pid, current_task, remove_current_task},
-    scheme::{schemes, CallerContext},
+    scheme::{schemes, CallerContext, Whence},
 };
 use libjon::{
     errno::ENOENT,
     fd::{FileDescriptorFlags, FileDescriptorId},
     path::Path,
-    syscall::{SYS_EXIT, SYS_GETPID, SYS_OPEN, SYS_READ, SYS_WRITE},
+    syscall::{SYS_EXIT, SYS_GETPID, SYS_LSEEK, SYS_OPEN, SYS_READ, SYS_WRITE},
 };
 use log::debug;
 use x86_64::{
@@ -109,6 +109,7 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
         SYS_WRITE => sys_write(arg1, arg2, arg3),
         SYS_READ => sys_read(arg1, arg2, arg3),
         SYS_GETPID => sys_getpid(),
+        SYS_LSEEK => sys_lseek(arg1, arg2, arg3),
         _ => {
             debug!("Invalid syscall number: {}", syscall_number);
             Err(ENOENT)
@@ -211,4 +212,21 @@ fn sys_getpid() -> SyscallResult {
     debug!("Current PID: {}", task.pid);
 
     Ok(task.pid.as_usize())
+}
+
+fn sys_lseek(descriptor_id: usize, offset: usize, whence: usize) -> SyscallResult {
+    let task = current_task().expect("ERROR: NO CURRENT TASK");
+    let fd = task
+        .fds
+        .iter()
+        .find(|desc| desc.id == FileDescriptorId(descriptor_id))
+        .expect("ERROR: FD NOT FOUND IN TASK");
+    let ctx = CallerContext {
+        pid: task.pid,
+        scheme: fd.scheme,
+    };
+    let schemes = schemes();
+    let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
+    debug!("Seeking in fd: {:?}", fd);
+    scheme.lseek(fd.id, offset, whence.into(), ctx)
 }

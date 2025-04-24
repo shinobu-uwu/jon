@@ -34,6 +34,7 @@ pub extern "C" fn _start() -> ! {
     init();
 
     let mut count: usize = 0;
+    let mut buf = [0u8; 128 * core::mem::size_of::<Proc>()];
 
     loop {
         if count < COUNT_MAX {
@@ -42,7 +43,6 @@ pub extern "C" fn _start() -> ! {
         }
 
         count = 0;
-        let mut buf = [0u8; 128 * core::mem::size_of::<Proc>()];
         let bytes_read = syscall::fs::read(*PROC_FD.lock(), &mut buf).unwrap();
         let procs_buf = &buf[..bytes_read];
         let procs: Vec<Proc, 128> = procs_buf
@@ -55,6 +55,10 @@ pub extern "C" fn _start() -> ! {
             let name = CStr::from_bytes_until_nul(&proc.name);
             log(format_args!("Proc: {:?}", name));
         }
+
+        write(*FRAMEBUFFER_FD.lock(), &buf[..bytes_read]).unwrap();
+
+        buf.fill(0);
     }
 }
 
