@@ -115,6 +115,7 @@ dependencies = [
  "libjon",
  "limine",
  "log",
+ "ps2",
  "spinning_top",
  "uart_16550",
  "x2apic",
@@ -181,6 +182,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60946a68e5f9d28b0dc1c21bb8a97ee7d018a8b322fa57838ba31cc878e22d99"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "ps2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfef03bb1362e6a23a211efe8c72e2eeb6888f51fb329cdfa07bb470986ea7d0"
+dependencies = [
+ "bitflags 1.3.2",
+ "x86_64 0.14.13",
 ]
 
 [[package]]

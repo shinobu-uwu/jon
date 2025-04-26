@@ -60,11 +60,16 @@ unsafe extern "C" fn kmain() -> ! {
         include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
     );
     scheduler::add_task(task);
-    let mut task = Task::new(
-        "task-manager",
-        include_bytes!("../../drivers/render/target/x86_64-unknown-none/release/render"),
+    // let mut task = Task::new(
+    //     "task-manager",
+    //     include_bytes!("../../drivers/render/target/x86_64-unknown-none/release/render"),
+    // );
+    // task.priority = Priority::High;
+    // scheduler::add_task(task);
+    let task = Task::new(
+        "keyboard",
+        include_bytes!("../../drivers/keyboard/target/x86_64-unknown-none/release/keyboard"),
     );
-    task.priority = Priority::High;
     scheduler::add_task(task);
     enable();
 

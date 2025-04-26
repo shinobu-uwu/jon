@@ -1,8 +1,9 @@
-pub mod pipe;
+mod pipe;
 mod proc;
+mod ps2;
 mod schemes;
-pub mod serial;
-pub mod vga;
+mod serial;
+mod vga;
 
 use crate::sched::pid::Pid;
 use alloc::{boxed::Box, sync::Arc};
@@ -27,6 +28,10 @@ lazy_static! {
         list.add("pipe", Arc::new(pipe::PipeScheme));
         debug!("Adding serial scheme");
         list.add("serial", Arc::new(serial::SerialScheme));
+        debug!("Adding ps2 scheme");
+        ps2::Ps2Scheme::init().unwrap();
+        list.add("ps2", Arc::new(ps2::Ps2Scheme));
+        debug!("Adding proc scheme");
         list.add("proc", Arc::new(proc::ProcScheme));
         RwSpinlock::new(list)
     };

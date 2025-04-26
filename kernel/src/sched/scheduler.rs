@@ -2,7 +2,10 @@ use alloc::{
     collections::{btree_map::BTreeMap, vec_deque::VecDeque},
     vec::Vec,
 };
+use lazy_static::lazy_static;
+use limine::request::SmpRequest;
 use log::{debug, info};
+use spinning_top::Spinlock;
 
 use crate::arch::{self, x86::structures::Registers};
 
@@ -11,15 +14,22 @@ use super::{
     task::{Priority, State, Task},
 };
 
+#[used]
+#[link_section = ".requests"]
+static SMP_REQUEST: SmpRequest = SmpRequest::new();
+lazy_static! {
+    static ref THREADS: Spinlock<Vec<limine::smp::Cpu>> = Spinlock::new(Vec::new());
+}
+
 static mut TASKS: BTreeMap<Pid, Task> = BTreeMap::new();
 static mut READY_QUEUE: VecDeque<Pid> = VecDeque::new();
 static mut BLOCKED_QUEUE: VecDeque<Pid> = VecDeque::new();
 static mut CURRENT_PID: Option<Pid> = None;
 pub static mut IDLE_PID: Option<Pid> = None;
 
-const QUANTUM_BASE: u64 = 10;
-const HIGH_PRIORITY_BONUS: u64 = 15;
-const LOW_PRIORITY_PENALTY: u64 = 5;
+const QUANTUM_BASE: u64 = 8;
+const HIGH_PRIORITY_BONUS: u64 = 24;
+const LOW_PRIORITY_PENALTY: u64 = 6;
 
 pub unsafe fn init() {
     debug!("Initializing scheduler");
@@ -30,6 +40,12 @@ pub unsafe fn init() {
         TASKS.insert(pid, task);
         IDLE_PID = Some(pid);
     }
+    debug!("Starting threads");
+
+    if let Some(res) = SMP_REQUEST.get_response() {
+        *THREADS.lock() = res.cpus().iter().map(|cpu| **cpu.clone()).collect();
+    }
+
     debug!("Scheduler initialized");
 }
 
@@ -209,3 +225,5 @@ pub fn unblock_current_task() {
         }
     }
 }
+
+pub fn run_in_thread(index: usize, task: &Task) {}

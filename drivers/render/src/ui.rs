@@ -6,7 +6,7 @@ pub const FRAMEBUFFER_HEIGHT: usize = 480;
 pub const FRAMEBUFFER_BPP: usize = 4;
 pub const BUF_SIZE: usize = 0x4000;
 
-/// Draws a horizontal thick line of solid red, `thickness` pixels tall,
+/// Draws a horizontal line of solid `color`, `thickness` pixels tall,
 /// starting at vertical coordinate `y`.
 pub fn draw_line(fd: usize, y: usize, thickness: usize, color: Color) {
     if y >= FRAMEBUFFER_HEIGHT {
@@ -28,6 +28,7 @@ pub fn draw_line(fd: usize, y: usize, thickness: usize, color: Color) {
             Color::Cyan => [255, 255, 0, 255],
             Color::Magenta => [255, 0, 255, 255],
         };
+
         pixel.copy_from_slice(&color_bytes);
     }
 

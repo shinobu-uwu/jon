@@ -1,12 +1,10 @@
 use crate::arch::end_of_interrupt;
-use crate::arch::x86::gdt::{GDT, TSS};
 use crate::arch::x86::interrupts::{ERROR_VECTOR, LAPIC, SPURIOUS_VECTOR, TIMER_VECTOR};
 use crate::interrupt;
-use crate::sched::scheduler::{current_task, remove_current_task, schedule};
+use crate::sched::scheduler::schedule;
 use lazy_static::lazy_static;
-use log::{debug, error, info};
+use log::{debug, info};
 use spinning_top::Spinlock;
-use x86_64::instructions::interrupts::{are_enabled, without_interrupts};
 use x86_64::registers::control::Cr2;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 
