@@ -45,18 +45,18 @@ unsafe extern "C" fn kmain() -> ! {
     arch::init();
     syscall::init();
     scheduler::init();
-    let task = Task::new(
-        "reincarnation",
-        include_bytes!(
-            "../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
-        ),
-    );
-    scheduler::add_task(task);
-    let task = Task::new(
-        "random",
-        include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
-    );
-    scheduler::add_task(task);
+    // let task = Task::new(
+    //     "reincarnation",
+    //     include_bytes!(
+    //         "../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
+    //     ),
+    // );
+    // scheduler::add_task(task);
+    // let task = Task::new(
+    //     "random",
+    //     include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
+    // );
+    // scheduler::add_task(task);
     start_task_manager();
     enable();
 

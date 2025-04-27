@@ -1,7 +1,7 @@
 use core::ptr::addr_of;
 
 use limine::{request::SmpRequest, smp::Cpu};
-use log::{debug, error, info};
+use log::{error, info};
 use x86_64::{
     instructions::tables::load_tss,
     registers::{
@@ -19,11 +19,9 @@ use x86_64::{
 };
 
 use crate::{
-    arch::{
-        self,
-        x86::gdt::{
-            ProcessorControlRegion, DOUBLE_FAULT_IST_INDEX, IA32_GS_BASE, IA32_KERNEL_GS_BASE,
-        },
+    arch::x86::{
+        gdt::{ProcessorControlRegion, DOUBLE_FAULT_IST_INDEX, IA32_GS_BASE, IA32_KERNEL_GS_BASE},
+        restore,
     },
     sched::task::Task,
     syscall::syscall_instruction,
@@ -57,23 +55,19 @@ pub fn start_task_manager() {
 
 extern "C" fn task_manager_entry(_cpu: &Cpu) -> ! {
     info!("Task manager core initialized");
+    unsafe {
+        init_cpu();
+    }
+
     let task_manager = Task::new(
         "task_manager",
         include_bytes!(
             "../../../drivers/task_manager/target/x86_64-unknown-none/release/task_manager"
         ),
     );
-
-    // Create a minimal CPU setup
-
+    info!("{:#x?}", task_manager.context);
     info!("CPU setup complete, switching to task manager");
-    unsafe {
-        init_cpu();
-    }
-
-    unsafe {
-        arch::x86::restore(&task_manager.context);
-    }
+    unsafe { restore(&task_manager.context) }
 }
 
 unsafe fn init_cpu() {
@@ -136,7 +130,7 @@ unsafe fn init_cpu() {
 
     match Star::write(user_cs, user_ss, kernel_cs, kernel_ss) {
         Ok(_) => {
-            debug!("STAR MSR set successfully");
+            info!("STAR MSR set successfully");
         }
         Err(e) => {
             panic!("Error setting STAR: {}", e)

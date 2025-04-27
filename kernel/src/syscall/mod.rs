@@ -46,7 +46,7 @@ pub(super) fn init() {
 
     match Star::write(user_cs, user_ss, kernel_cs, kernel_ss) {
         Ok(_) => {
-            debug!("STAR MSR set successfully");
+            info!("STAR MSR set successfully");
         }
         Err(e) => {
             panic!("Error setting STAR: {}", e)
@@ -91,7 +91,7 @@ pub unsafe extern "C" fn syscall_instruction() {
 
 pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
     let scratch = &(*registers);
-    let (syscall_number, arg1, arg2, arg3, arg4, arg5, arg6) = (
+    let (syscall_number, arg1, arg2, arg3, _arg4, _arg5, _arg6) = (
         scratch.rax as usize,
         scratch.rdi as usize,
         scratch.rsi as usize,
