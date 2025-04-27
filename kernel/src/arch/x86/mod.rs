@@ -1,9 +1,7 @@
 use core::arch::asm;
 
-use gdt::{set_tss_kernel_stack, TSS};
-use log::info;
+use gdt::set_tss_kernel_stack;
 use structures::Registers;
-use x86_64::VirtAddr;
 
 use crate::sched::task::Task;
 
@@ -54,7 +52,7 @@ pub unsafe fn save(context: &mut Registers, stack_frame: &Registers) {
 
 // IMPORTANT: any acquired locks, or anything you must do before switching tasks,
 // must be released or done here, after this the kernel will jump to the task's instruction pointer
-unsafe fn restore(context: &Registers) -> ! {
+pub unsafe fn restore(context: &Registers) -> ! {
     const PRESERVED_OFFSET: u8 = 0x48;
     const SCRATCH_OFFSET: u8 = 0x00;
     const IRET_OFFSET: u8 = 0x78;

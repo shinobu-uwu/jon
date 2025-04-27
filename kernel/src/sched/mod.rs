@@ -3,3 +3,4 @@ pub mod memory;
 pub mod pid;
 pub mod scheduler;
 pub mod task;
+pub mod task_manager;

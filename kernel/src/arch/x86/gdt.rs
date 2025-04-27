@@ -1,11 +1,9 @@
-use core::mem::offset_of;
 use core::ptr::addr_of;
-use core::{arch, usize};
+use core::usize;
 
-use log::{debug, info};
+use log::debug;
 use x86_64::instructions::tables::load_tss;
-use x86_64::registers::model_specific::{GsBase, KernelGsBase, Msr};
-use x86_64::registers::segmentation::{Segment, CS, GS, SS};
+use x86_64::registers::segmentation::{Segment, CS, SS};
 use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector};
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
@@ -13,8 +11,8 @@ use x86_64::VirtAddr;
 use crate::memory::address::VirtualAddress;
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
-const IA32_GS_BASE: u32 = 0xC0000101;
-const IA32_KERNEL_GS_BASE: u32 = 0xC0000102;
+pub const IA32_GS_BASE: u32 = 0xC0000101;
+pub const IA32_KERNEL_GS_BASE: u32 = 0xC0000102;
 
 pub static mut TSS: TaskStateSegment = TaskStateSegment::new();
 static mut PCR: ProcessorControlRegion = ProcessorControlRegion {

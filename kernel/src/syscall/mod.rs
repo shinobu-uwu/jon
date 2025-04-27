@@ -7,7 +7,7 @@ use crate::{
     },
     pop_scratch, push_scratch,
     sched::scheduler::{current_pid, current_task, remove_current_task},
-    scheme::{schemes, CallerContext, Whence},
+    scheme::{schemes, CallerContext},
 };
 use libjon::{
     errno::ENOENT,

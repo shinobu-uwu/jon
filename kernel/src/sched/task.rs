@@ -16,6 +16,7 @@ use crate::{
 use super::{fd::FileDescriptor, memory::MemoryDescriptor};
 
 const KERNEL_STACK_START: usize = 0xffff888000000000;
+const USER_STACK_START: usize = 0x0000700000000000;
 const STACK_SIZE: usize = 0x8000; // 32 KiB
 
 #[derive(Debug)]
@@ -54,14 +55,13 @@ pub enum State {
 impl Task {
     pub fn new(name: &str, binary: &[u8]) -> Self {
         let pid = Pid::new(Pid::next_pid());
-        debug!("Creating task with PID {}", pid);
-        let start_block = (pid.as_usize() - 1) * 2;
+        info!("Creating task {} with PID {}", name, pid);
         let kernel_stack = Stack::new(
-            VirtualAddress::new(KERNEL_STACK_START + start_block * STACK_SIZE),
+            VirtualAddress::new(KERNEL_STACK_START + (pid.as_usize() - 1) * STACK_SIZE),
             STACK_SIZE,
         );
         let user_stack = Stack::new(
-            VirtualAddress::new(KERNEL_STACK_START + (start_block + 1) * STACK_SIZE),
+            VirtualAddress::new(USER_STACK_START + (pid.as_usize() - 1) * STACK_SIZE),
             STACK_SIZE,
         );
         debug!("Finished creating stack");
@@ -70,7 +70,7 @@ impl Task {
         let loader = ElfLoader::new();
         debug!("Loading binary");
         let (memory_descriptor, rip) = loader.load(bin_addr, binary).unwrap();
-        info!("Binary starting at: {:#x?}", rip);
+        info!("Loaded binary at {:#x?}", bin_addr);
 
         context.iret.rsp = user_stack.top().as_u64();
         context.iret.rip = rip.as_u64();

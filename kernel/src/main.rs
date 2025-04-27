@@ -11,12 +11,13 @@ mod syscall;
 
 use core::arch::asm;
 
-use limine::request::{RequestsEndMarker, RequestsStartMarker, SmpRequest};
+use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
 use log::error;
 use output::logger;
 use sched::scheduler;
-use sched::task::{Priority, Task};
+use sched::task::Task;
+use sched::task_manager::start_task_manager;
 use x86_64::instructions::interrupts::enable;
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -26,10 +27,6 @@ use x86_64::instructions::interrupts::enable;
 // The .requests section allows limine to find the requests faster and more safely.
 #[link_section = ".requests"]
 static BASE_REVISION: BaseRevision = BaseRevision::new();
-
-#[used]
-#[link_section = ".requests"]
-static SMP_REQUEST: SmpRequest = SmpRequest::new();
 
 /// Define the stand and end markers for Limine requests.
 #[used]
@@ -60,17 +57,7 @@ unsafe extern "C" fn kmain() -> ! {
         include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
     );
     scheduler::add_task(task);
-    // let mut task = Task::new(
-    //     "task-manager",
-    //     include_bytes!("../../drivers/render/target/x86_64-unknown-none/release/render"),
-    // );
-    // task.priority = Priority::High;
-    // scheduler::add_task(task);
-    let task = Task::new(
-        "keyboard",
-        include_bytes!("../../drivers/keyboard/target/x86_64-unknown-none/release/keyboard"),
-    );
-    scheduler::add_task(task);
+    start_task_manager();
     enable();
 
     hcf();

@@ -57,16 +57,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1064d564ae026ae123bf5d607318b42a5b31d70a3c48e6ea7ee44cce4cdb095e"
 
 [[package]]
-name = "render"
-version = "0.1.0"
-dependencies = [
- "heapless",
- "jon_common",
- "noto-sans-mono-bitmap",
- "spinning_top",
-]
-
-[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -86,3 +76,13 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "task_manager"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "jon_common",
+ "noto-sans-mono-bitmap",
+ "spinning_top",
+]
