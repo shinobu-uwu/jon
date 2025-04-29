@@ -9,7 +9,7 @@ use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
 
 use super::{CallerContext, KernelScheme};
 
-static CONTROLLER: Spinlock<Controller> = Spinlock::new(unsafe { Controller::new() });
+pub static CONTROLLER: Spinlock<Controller> = Spinlock::new(unsafe { Controller::new() });
 
 pub struct Ps2Scheme;
 
@@ -30,7 +30,6 @@ impl Ps2Scheme {
             false,
         );
         controller.write_config(config)?;
-
         controller.test_controller()?;
         controller.write_config(config)?;
 

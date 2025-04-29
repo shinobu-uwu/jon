@@ -8,6 +8,7 @@ mod output;
 mod sched;
 mod scheme;
 mod syscall;
+mod task_manager;
 
 use core::arch::asm;
 
@@ -17,7 +18,7 @@ use log::error;
 use output::logger;
 use sched::scheduler;
 use sched::task::Task;
-use sched::task_manager::start_task_manager;
+use task_manager::start_task_manager;
 use x86_64::instructions::interrupts::enable;
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -45,18 +46,18 @@ unsafe extern "C" fn kmain() -> ! {
     arch::init();
     syscall::init();
     scheduler::init();
-    // let task = Task::new(
-    //     "reincarnation",
-    //     include_bytes!(
-    //         "../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
-    //     ),
-    // );
-    // scheduler::add_task(task);
-    // let task = Task::new(
-    //     "random",
-    //     include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
-    // );
-    // scheduler::add_task(task);
+    let task = Task::new(
+        "reincarnation",
+        include_bytes!(
+            "../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
+        ),
+    );
+    scheduler::add_task(task);
+    let task = Task::new(
+        "random",
+        include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
+    );
+    scheduler::add_task(task);
     start_task_manager();
     enable();
 

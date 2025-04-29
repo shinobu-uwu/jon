@@ -1,9 +1,9 @@
 mod pipe;
 mod proc;
-mod ps2;
+pub mod ps2;
 mod schemes;
 mod serial;
-mod vga;
+pub mod vga;
 
 use crate::sched::pid::Pid;
 use alloc::{boxed::Box, sync::Arc};

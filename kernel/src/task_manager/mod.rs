@@ -1,15 +1,15 @@
-use core::ptr::addr_of;
+mod ui;
+
+use alloc::format;
+use core::{ptr::addr_of, u8};
+use pc_keyboard::{layouts, HandleControl, Keyboard, ScancodeSet1};
 
 use limine::{request::SmpRequest, smp::Cpu};
 use log::{error, info};
+use ui::{get_key, Color, FramebufferWriter};
 use x86_64::{
     instructions::tables::load_tss,
-    registers::{
-        control::{Efer, EferFlags},
-        model_specific::{LStar, SFMask, Star},
-        rflags::RFlags,
-        segmentation::{Segment, CS, SS},
-    },
+    registers::segmentation::{Segment, CS, SS},
     structures::{
         gdt::{Descriptor, GlobalDescriptorTable},
         idt::{InterruptDescriptorTable, InterruptStackFrame},
@@ -19,12 +19,9 @@ use x86_64::{
 };
 
 use crate::{
-    arch::x86::{
-        gdt::{ProcessorControlRegion, DOUBLE_FAULT_IST_INDEX, IA32_GS_BASE, IA32_KERNEL_GS_BASE},
-        restore,
-    },
-    sched::task::Task,
-    syscall::syscall_instruction,
+    arch::x86::gdt::DOUBLE_FAULT_IST_INDEX,
+    sched::{scheduler::get_tasks, task::State},
+    scheme::vga::{init_fbs, FRAMEBUFFERS},
 };
 
 #[used]
@@ -33,10 +30,6 @@ static SMP_REQUEST: SmpRequest = SmpRequest::new();
 static mut TSS: TaskStateSegment = TaskStateSegment::new();
 static mut GDT: GlobalDescriptorTable = GlobalDescriptorTable::new();
 static mut IDT: InterruptDescriptorTable = InterruptDescriptorTable::new();
-static mut PCR: ProcessorControlRegion = ProcessorControlRegion {
-    user_rsp: 0,
-    kernel_rsp: 0,
-};
 
 pub fn start_task_manager() {
     info!("Starting task manager");
@@ -59,22 +52,42 @@ extern "C" fn task_manager_entry(_cpu: &Cpu) -> ! {
         init_cpu();
     }
 
-    let task_manager = Task::new(
-        "task_manager",
-        include_bytes!(
-            "../../../drivers/task_manager/target/x86_64-unknown-none/release/task_manager"
-        ),
+    init_fbs();
+    let mut framebuffers = FRAMEBUFFERS.write();
+    let framebuffer = framebuffers.get_mut(0).unwrap();
+    let mut writer = FramebufferWriter::new(framebuffer);
+    let mut selected_task = 0;
+    let mut keyboard = Keyboard::new(
+        ScancodeSet1::new(),
+        layouts::Us104Key,
+        HandleControl::Ignore,
     );
-    info!("{:#x?}", task_manager.context);
-    info!("CPU setup complete, switching to task manager");
-    unsafe { restore(&task_manager.context) }
+
+    loop {
+        writer.clear();
+        let tasks = get_tasks();
+        info!("{:?}", get_key(&mut keyboard));
+
+        for (i, task) in tasks.iter().enumerate() {
+            let state = task.state.clone();
+            let text = format!("{} - {}", task.pid, task.name);
+            let color = match state {
+                State::Running => Color::Green,
+                State::Blocked => Color::Red,
+                State::Waiting => Color::Yellow,
+                State::Zombie => Color::Cyan,
+            };
+            writer.draw_line(50 * selected_task, 50, Color::Blue);
+            writer.write_text(0, 50 * i, &text, color);
+        }
+
+        writer.flush();
+    }
 }
 
 unsafe fn init_cpu() {
     let kernel_code_selector = GDT.append(Descriptor::kernel_code_segment());
     let kernel_data_selector = GDT.append(Descriptor::kernel_data_segment());
-    let user_data_selector = GDT.append(Descriptor::user_data_segment());
-    let user_code_selector = GDT.append(Descriptor::user_code_segment());
 
     const STACK_SIZE: usize = 4096 * 5;
     static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
@@ -99,46 +112,7 @@ unsafe fn init_cpu() {
     SS::set_reg(kernel_data_selector);
 
     load_tss(tss_selector);
-    let pcr_addr = addr_of!(PCR) as u64;
-
-    core::arch::asm!(
-        "wrmsr",
-        in("rcx") IA32_KERNEL_GS_BASE,
-        in("rax") pcr_addr,
-        in("rdx") pcr_addr >> 32,
-    );
-    core::arch::asm!(
-        "wrmsr",
-        in("rcx") IA32_GS_BASE,
-        in("rax") pcr_addr,
-        in("rdx") pcr_addr >> 32,
-    );
     IDT.load();
-
-    unsafe {
-        Efer::update(|efer| {
-            efer.insert(EferFlags::SYSTEM_CALL_EXTENSIONS);
-        });
-    }
-
-    let (kernel_cs, kernel_ss, user_cs, user_ss) = (
-        kernel_code_selector,
-        kernel_data_selector,
-        user_code_selector,
-        user_data_selector,
-    );
-
-    match Star::write(user_cs, user_ss, kernel_cs, kernel_ss) {
-        Ok(_) => {
-            info!("STAR MSR set successfully");
-        }
-        Err(e) => {
-            panic!("Error setting STAR: {}", e)
-        }
-    }
-
-    LStar::write(VirtAddr::new(syscall_instruction as u64));
-    SFMask::write(RFlags::INTERRUPT_FLAG);
 }
 
 extern "x86-interrupt" fn double_fault_handler(
