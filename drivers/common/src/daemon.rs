@@ -128,7 +128,9 @@ impl Daemon {
                             self.log(format_args!("Message handled, result: {}", n));
                             syscall::fs::write(self.write_pipe, &n.to_ne_bytes()).unwrap();
                         }
-                        Err(_) => todo!(),
+                        Err(e) => {
+                            syscall::fs::write(self.write_pipe, &(-e).to_ne_bytes()).unwrap();
+                        }
                     }
                 }
                 Err(errno) => {

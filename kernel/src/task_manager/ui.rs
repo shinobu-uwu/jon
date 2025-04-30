@@ -1,18 +1,17 @@
 use alloc::vec::Vec;
 use noto_sans_mono_bitmap::{get_raster, FontWeight, RasterHeight};
-use pc_keyboard::{
-    layouts::{self, Us104Key},
-    DecodedKey, HandleControl, Keyboard, ScancodeSet1,
-};
+use pc_keyboard::{layouts::Us104Key, DecodedKey, Keyboard, ScancodeSet2};
 use x86_64::instructions::port::Port;
 
-use crate::scheme::{ps2::CONTROLLER, vga::Framebuffer};
+use crate::scheme::vga::Framebuffer;
 
-const SIZE: RasterHeight = RasterHeight::Size32;
+pub const FONT_SIZE: RasterHeight = RasterHeight::Size32;
 
 pub struct FramebufferWriter<'a> {
     framebuffer: &'a mut Framebuffer,
     buffer: Vec<u8>, // back buffer to avoid tearing
+    dirty_start: (usize, usize),
+    dirty_end: (usize, usize),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -23,6 +22,7 @@ pub enum Color {
     Yellow,
     Cyan,
     Magenta,
+    White,
 }
 
 impl Color {
@@ -34,6 +34,7 @@ impl Color {
             Color::Yellow => [0, 255, 255, 255],
             Color::Cyan => [255, 255, 0, 255],
             Color::Magenta => [255, 0, 255, 255],
+            Color::White => [255, 255, 255, 255],
         }
     }
 }
@@ -41,16 +42,31 @@ impl Color {
 impl<'a> FramebufferWriter<'a> {
     pub fn new(framebuffer: &'a mut Framebuffer) -> Self {
         let buffer = alloc::vec![0; framebuffer.inner.len()];
+        let width = framebuffer.width as usize;
+        let height = framebuffer.height as usize;
         let mut writer = Self {
             framebuffer,
             buffer,
+            dirty_start: (0, 0),
+            dirty_end: (width, height),
         };
         writer.clear();
         writer
     }
 
     pub fn clear(&mut self) {
-        self.buffer.fill(0);
+        let (start_x, start_y) = self.dirty_start;
+        let (end_x, end_y) = self.dirty_end;
+
+        if start_x >= end_x || start_y >= end_y {
+            return;
+        }
+
+        for y in start_y..end_y {
+            let start = y * self.width() + start_x;
+            let end = y * self.width() + end_x;
+            self.buffer[start..end].fill(0);
+        }
     }
 
     pub fn width(&self) -> usize {
@@ -65,7 +81,7 @@ impl<'a> FramebufferWriter<'a> {
         for ch in text.chars() {
             self.write_char(x, y, ch, color);
             // Advance x after each char
-            if let Some(glyph) = get_raster(ch, FontWeight::Regular, SIZE) {
+            if let Some(glyph) = get_raster(ch, FontWeight::Regular, FONT_SIZE) {
                 x += glyph.width() + 8;
             } else {
                 x += 8;
@@ -94,13 +110,21 @@ impl<'a> FramebufferWriter<'a> {
                     self.buffer[pixel_offset + 1] = g;
                     self.buffer[pixel_offset + 2] = r;
                     self.buffer[pixel_offset + 3] = a;
+                    self.mark_dirty(col, row);
                 }
             }
         }
     }
 
+    fn mark_dirty(&mut self, x: usize, y: usize) {
+        self.dirty_start.0 = self.dirty_start.0.min(x);
+        self.dirty_start.1 = self.dirty_start.1.min(y);
+        self.dirty_end.0 = self.dirty_end.0.max(x + 1);
+        self.dirty_end.1 = self.dirty_end.1.max(y + 1);
+    }
+
     pub fn write_char(&mut self, x: usize, y: usize, ch: char, color: Color) {
-        let glyph = match get_raster(ch, FontWeight::Regular, SIZE) {
+        let glyph = match get_raster(ch, FontWeight::Regular, FONT_SIZE) {
             Some(g) => g,
             None => return,
         };
@@ -128,6 +152,7 @@ impl<'a> FramebufferWriter<'a> {
                         self.buffer[pixel_offset + 1] = g;
                         self.buffer[pixel_offset + 2] = r;
                         self.buffer[pixel_offset + 3] = a;
+                        self.mark_dirty(px, py);
                     }
                 }
             }
@@ -135,11 +160,30 @@ impl<'a> FramebufferWriter<'a> {
     }
 
     pub fn flush(&mut self) {
-        self.framebuffer.inner.copy_from_slice(&self.buffer);
+        let (start_x, start_y) = self.dirty_start;
+        let (end_x, end_y) = self.dirty_end;
+        let bpp = self.framebuffer.bpp as usize;
+        let pitch = self.framebuffer.pitch as usize;
+
+        if start_x >= end_x || start_y >= end_y {
+            return;
+        }
+
+        for y in start_y..end_y {
+            let start = y * pitch + start_x * bpp;
+            let end = y * pitch + end_x * bpp;
+            let back_slice = &self.buffer[start..end];
+            let fb_slice = &mut self.framebuffer.inner[start..end];
+
+            fb_slice.copy_from_slice(back_slice);
+        }
+
+        self.dirty_start = (0, 0);
+        self.dirty_end = (self.width(), self.height());
     }
 }
 
-pub fn get_key(keyboard: &mut Keyboard<Us104Key, ScancodeSet1>) -> Option<DecodedKey> {
+pub fn get_key(keyboard: &mut Keyboard<Us104Key, ScancodeSet2>) -> Option<DecodedKey> {
     let mut status_port = Port::<u8>::new(0x64);
     let mut port = Port::new(0x60);
 

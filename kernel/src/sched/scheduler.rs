@@ -2,8 +2,8 @@ use alloc::{
     collections::{btree_map::BTreeMap, vec_deque::VecDeque},
     vec::Vec,
 };
-use limine::request::SmpRequest;
 use log::{debug, info};
+use spinning_top::{RwSpinlock, Spinlock};
 
 use crate::arch::{self, x86::structures::Registers};
 
@@ -12,11 +12,11 @@ use super::{
     task::{Priority, State, Task},
 };
 
-static mut TASKS: BTreeMap<Pid, Task> = BTreeMap::new();
-static mut READY_QUEUE: VecDeque<Pid> = VecDeque::new();
-static mut BLOCKED_QUEUE: VecDeque<Pid> = VecDeque::new();
-static mut CURRENT_PID: Option<Pid> = None;
-pub static mut IDLE_PID: Option<Pid> = None;
+static TASKS: RwSpinlock<BTreeMap<Pid, Task>> = RwSpinlock::new(BTreeMap::new());
+static READY_QUEUE: Spinlock<VecDeque<Pid>> = Spinlock::new(VecDeque::new());
+static BLOCKED_QUEUE: Spinlock<VecDeque<Pid>> = Spinlock::new(VecDeque::new());
+static CURRENT_PID: Spinlock<Option<Pid>> = Spinlock::new(None);
+pub static IDLE_PID: Spinlock<Option<Pid>> = Spinlock::new(None);
 
 const QUANTUM_BASE: u64 = 8;
 const HIGH_PRIORITY_BONUS: u64 = 24;
@@ -24,189 +24,228 @@ const LOW_PRIORITY_PENALTY: u64 = 6;
 
 pub unsafe fn init() {
     debug!("Initializing scheduler");
+    let mut idle_pid = IDLE_PID.lock();
 
-    if IDLE_PID.is_none() {
+    if idle_pid.is_none() {
         debug!("Creating idle task");
         let task = Task::idle();
         let pid = task.pid;
-        TASKS.insert(pid, task);
-        IDLE_PID = Some(pid);
+        TASKS.write().insert(pid, task);
+        *idle_pid = Some(pid);
     }
 
     debug!("Scheduler initialized");
 }
 
 pub unsafe fn schedule(stack_frame: &Registers) {
-    if CURRENT_PID.is_none() && READY_QUEUE.is_empty() {
-        debug!("No regular tasks to run, checking for idle task");
+    let mut current_pid_guard = CURRENT_PID.lock();
+    let mut ready_queue_guard = READY_QUEUE.lock();
 
-        if let Some(idle_pid) = IDLE_PID {
-            if !READY_QUEUE.contains(&idle_pid) {
-                debug!("Adding idle task to ready queue");
-                READY_QUEUE.push_back(idle_pid);
+    // Handle idle task if needed
+    if current_pid_guard.is_none() && ready_queue_guard.is_empty() {
+        let idle_pid = *IDLE_PID.lock();
+        if let Some(idle) = idle_pid {
+            if !ready_queue_guard.contains(&idle) {
+                ready_queue_guard.push_back(idle);
             }
-        } else {
-            debug!("Creating new idle task");
-            let idle_task = Task::idle();
-            let pid = idle_task.pid;
-            add_task(idle_task);
-            IDLE_PID = Some(pid);
         }
     }
 
-    let current_pid = CURRENT_PID;
-    let next_pid = {
-        let tasks = &mut TASKS;
-        let queue = &mut READY_QUEUE;
+    // Determine next task to run
+    let next_pid = match *current_pid_guard {
+        Some(pid) => {
+            let mut tasks_guard = TASKS.write();
+            let current_task = tasks_guard.get_mut(&pid).unwrap();
+            current_task.quantum += 1;
 
-        match current_pid {
-            Some(pid) => {
-                let current_task = tasks.get_mut(&pid).unwrap();
-                current_task.quantum += 1;
+            let quantum_limit = match current_task.priority {
+                Priority::High => QUANTUM_BASE + HIGH_PRIORITY_BONUS,
+                Priority::Normal => QUANTUM_BASE,
+                Priority::Low => QUANTUM_BASE - LOW_PRIORITY_PENALTY,
+            };
 
-                let quantum_limit = match current_task.priority {
-                    Priority::High => QUANTUM_BASE + HIGH_PRIORITY_BONUS,
-                    Priority::Normal => QUANTUM_BASE,
-                    Priority::Low => QUANTUM_BASE - LOW_PRIORITY_PENALTY,
-                };
-
-                if current_task.quantum >= quantum_limit {
-                    current_task.quantum = 0;
-                    if let State::Running = current_task.state {
-                        queue.push_back(pid);
-                    }
-                    queue.pop_front()
-                } else {
-                    None
+            if current_task.quantum >= quantum_limit {
+                current_task.quantum = 0;
+                if matches!(current_task.state, State::Running) {
+                    ready_queue_guard.push_back(pid);
                 }
+                ready_queue_guard.pop_front()
+            } else {
+                None
             }
-            None => queue.pop_front(),
         }
+        None => ready_queue_guard.pop_front(),
     };
 
-    match (next_pid, current_pid) {
+    match (next_pid, *current_pid_guard) {
         (Some(next), Some(current)) => {
-            let prev_task = TASKS.get_mut(&current).unwrap();
-            let next_task = TASKS.get_mut(&next).unwrap();
-            debug!("Switching from task {} to task {}", current, next);
+            {
+                let mut tasks_guard = TASKS.write();
+                let prev_task = tasks_guard.get_mut(&current).unwrap();
+                prev_task.state = State::Waiting;
+                prev_task.quantum = 0; // Reset quantum when switching away
 
-            prev_task.state = State::Waiting;
-            next_task.state = State::Running;
+                let next_task = tasks_guard.get_mut(&next).unwrap();
+                next_task.state = State::Running;
+            }
 
-            CURRENT_PID = Some(next);
-            arch::switch_to(Some(prev_task), &next_task, stack_frame);
+            *current_pid_guard = Some(next);
+
+            let prev_task_ptr = get_task_mut(current).unwrap() as *mut Task;
+            let next_task_ptr = get_task_mut(next).unwrap() as *mut Task;
+
+            drop(ready_queue_guard);
+            drop(current_pid_guard);
+
+            let prev_task_ref = &mut *prev_task_ptr;
+            let next_task_ref = &*next_task_ptr;
+
+            arch::switch_to(Some(prev_task_ref), next_task_ref, stack_frame);
         }
         (Some(next), None) => {
-            let next_task = TASKS.get_mut(&next).unwrap();
-            debug!("Switching to task {}", next);
+            {
+                let mut tasks_guard = TASKS.write();
+                let next_task = tasks_guard.get_mut(&next).unwrap();
+                next_task.state = State::Running;
+            }
 
-            next_task.state = State::Running;
+            *current_pid_guard = Some(next);
 
-            CURRENT_PID = Some(next);
-            arch::switch_to(None, &next_task, stack_frame);
+            let next_task_ptr = get_task_mut(next).unwrap() as *mut Task;
+
+            drop(ready_queue_guard);
+            drop(current_pid_guard);
+
+            let next_task_ref = &*next_task_ptr;
+
+            arch::switch_to(None, next_task_ref, stack_frame);
         }
-        _ => {}
+        _ => {
+            // No task to schedule
+        }
     }
 }
 
 pub fn add_task(task: Task) {
-    unsafe {
-        let pid = task.pid;
-        debug!("Adding task {}", pid);
-        READY_QUEUE.push_back(pid);
-        TASKS.insert(pid, task);
-    }
+    let pid = task.pid;
+    debug!("Adding task {}", pid);
+    READY_QUEUE.lock().push_back(pid);
+    TASKS.write().insert(pid, task);
 }
 
 pub fn remove_current_task() {
-    unsafe {
-        if let Some(pid) = CURRENT_PID {
-            remove_task(pid);
-        }
+    if let Some(pid) = *CURRENT_PID.lock() {
+        remove_task(pid);
     }
 }
 
 pub fn remove_task(pid: Pid) {
-    unsafe {
-        debug!("Removing task {}", pid);
+    debug!("Removing task {}", pid);
+    let mut tasks = TASKS.write();
+    let mut ready_queue = READY_QUEUE.lock();
+    let mut current_pid = CURRENT_PID.lock();
 
-        if TASKS.remove(&pid).is_none() {
-            debug!("Task {} not found", pid);
-            return;
-        }
+    if tasks.remove(&pid).is_none() {
+        debug!("Task {} not found", pid);
+        return;
+    }
 
-        READY_QUEUE.retain(|&p| p != pid);
+    ready_queue.retain(|&p| p != pid);
 
-        if CURRENT_PID == Some(pid) {
-            CURRENT_PID = None;
-        }
+    if *current_pid == Some(pid) {
+        *current_pid = None;
     }
 }
 
 pub fn current_pid() -> Option<Pid> {
-    unsafe { CURRENT_PID }
+    *CURRENT_PID.lock()
 }
 
 pub fn get_tasks() -> Vec<&'static Task> {
-    unsafe { TASKS.values().collect() }
+    let tasks = TASKS.read();
+
+    unsafe { tasks.values().map(|task| &*(task as *const Task)).collect() }
 }
 
 pub fn current_task() -> Option<&'static Task> {
-    unsafe { TASKS.get(&CURRENT_PID?) }
+    match *CURRENT_PID.lock() {
+        Some(pid) => {
+            let tasks = TASKS.read();
+            tasks
+                .get(&pid)
+                .map(|task| unsafe { &*(task as *const Task) })
+        }
+        None => None,
+    }
 }
 
 pub fn get_task(pid: Pid) -> Option<&'static Task> {
-    unsafe { TASKS.get(&pid) }
+    let tasks = TASKS.read();
+
+    // this is safe because TASKS' inner is static
+    unsafe { tasks.get(&pid).map(|task| &*(task as *const Task)) }
 }
 
 pub fn get_task_mut(pid: Pid) -> Option<&'static mut Task> {
-    unsafe { TASKS.get_mut(&pid) }
+    let mut tasks = TASKS.write();
+
+    // this is safe because TASKS' inner is static
+    unsafe { tasks.get_mut(&pid).map(|task| &mut *(task as *mut Task)) }
 }
 
 pub fn block_current_task() {
-    unsafe {
-        if let Some(pid) = CURRENT_PID {
-            block_task(pid);
-        }
+    let current_pid = CURRENT_PID.lock();
+
+    if let Some(pid) = *current_pid {
+        block_task(pid);
     }
 }
 
 pub fn block_task(pid: Pid) {
-    unsafe {
-        info!("Blocking task {}", pid);
+    info!("Blocking task {}", pid);
+    let mut tasks = TASKS.write();
+    let mut blocked_queue = BLOCKED_QUEUE.lock();
+    let mut ready_queue = READY_QUEUE.lock();
+    let mut current_pid = CURRENT_PID.lock();
 
-        if let Some(task) = TASKS.get_mut(&pid) {
-            task.state = State::Blocked;
-            READY_QUEUE.retain(|&p| p != pid);
-            BLOCKED_QUEUE.push_back(pid);
+    if let Some(task) = tasks.get_mut(&pid) {
+        task.state = State::Blocked;
+        ready_queue.retain(|&p| p != pid);
+        blocked_queue.push_back(pid);
 
-            if let Some(current_pid) = CURRENT_PID {
-                if current_pid == pid {
-                    CURRENT_PID = None;
-                }
+        if let Some(p) = *current_pid {
+            if p == pid {
+                *current_pid = None;
             }
+        }
 
+        unsafe {
             schedule(&Registers::default());
         }
     }
 }
 
 pub fn unblock_task(pid: Pid) {
-    unsafe {
-        info!("Unblocking task {}", pid);
+    debug!("Unblocking task {}", pid);
+    let mut tasks = TASKS.write();
+    let mut blocked_queue = BLOCKED_QUEUE.lock();
+    let mut ready_queue = READY_QUEUE.lock();
+    let current_pid = *CURRENT_PID.lock();
 
-        if let Some(task) = TASKS.get_mut(&pid) {
+    if let Some(task) = tasks.get_mut(&pid) {
+        if current_pid == Some(pid) {
             task.state = State::Running;
-            BLOCKED_QUEUE.retain(|&p| p != pid);
-            READY_QUEUE.push_back(pid);
+        } else {
+            task.state = State::Waiting;
         }
+
+        blocked_queue.retain(|&p| p != pid);
+        ready_queue.push_back(pid);
     }
 }
 
 pub fn unblock_current_task() {
-    unsafe {
-        if let Some(pid) = CURRENT_PID {
-            unblock_task(pid);
-        }
+    if let Some(pid) = *CURRENT_PID.lock() {
+        unblock_task(pid);
     }
 }
