@@ -12,10 +12,10 @@ use super::{
     task::{Priority, State, Task},
 };
 
-static TASKS: RwSpinlock<BTreeMap<Pid, Task>> = RwSpinlock::new(BTreeMap::new());
-static READY_QUEUE: Spinlock<VecDeque<Pid>> = Spinlock::new(VecDeque::new());
-static BLOCKED_QUEUE: Spinlock<VecDeque<Pid>> = Spinlock::new(VecDeque::new());
-static CURRENT_PID: Spinlock<Option<Pid>> = Spinlock::new(None);
+pub static TASKS: RwSpinlock<BTreeMap<Pid, Task>> = RwSpinlock::new(BTreeMap::new());
+pub static READY_QUEUE: Spinlock<VecDeque<Pid>> = Spinlock::new(VecDeque::new());
+pub static BLOCKED_QUEUE: Spinlock<VecDeque<Pid>> = Spinlock::new(VecDeque::new());
+pub static CURRENT_PID: Spinlock<Option<Pid>> = Spinlock::new(None);
 pub static IDLE_PID: Spinlock<Option<Pid>> = Spinlock::new(None);
 
 const QUANTUM_BASE: u64 = 8;
@@ -145,16 +145,27 @@ pub fn remove_task(pid: Pid) {
     let mut ready_queue = READY_QUEUE.lock();
     let mut current_pid = CURRENT_PID.lock();
 
-    if tasks.remove(&pid).is_none() {
-        debug!("Task {} not found", pid);
-        return;
+    match tasks.get_mut(&pid) {
+        Some(t) => {
+            info!("Found task {:#?}", t);
+            t.state = State::Stopped;
+
+            ready_queue.retain(|&p| p != pid);
+
+            if *current_pid == Some(pid) {
+                *current_pid = None;
+            }
+        }
+        None => {
+            debug!("Task {} not found", pid);
+            return;
+        }
     }
 
-    ready_queue.retain(|&p| p != pid);
-
-    if *current_pid == Some(pid) {
-        *current_pid = None;
-    }
+    // if tasks.remove(&pid).is_none() {
+    //     debug!("Task {} not found", pid);
+    //     return;
+    // }
 }
 
 pub fn current_pid() -> Option<Pid> {
@@ -174,6 +185,18 @@ pub fn current_task() -> Option<&'static Task> {
             tasks
                 .get(&pid)
                 .map(|task| unsafe { &*(task as *const Task) })
+        }
+        None => None,
+    }
+}
+
+pub fn current_task_mut() -> Option<&'static mut Task> {
+    match *CURRENT_PID.lock() {
+        Some(pid) => {
+            let mut tasks = TASKS.write();
+            tasks
+                .get_mut(&pid)
+                .map(|task| unsafe { &mut *(task as *mut Task) })
         }
         None => None,
     }

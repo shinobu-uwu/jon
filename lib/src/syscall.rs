@@ -5,3 +5,4 @@ pub const SYS_OPEN: usize = 56;
 pub const SYS_CLOSE: usize = 57;
 pub const SYS_READ: usize = 63;
 pub const SYS_GETPID: usize = 39;
+pub const SYS_BRK: usize = 12;

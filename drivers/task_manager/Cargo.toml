@@ -1,0 +1,18 @@
+[package]
+name = "task_manager"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+jon_common = { path = "../common" }
+spinning_top = "0.3.0"
+buddy_system_allocator = "0.11.0"
+noto-sans-mono-bitmap = {version = "0.3.1", features=["all"]}
+pc-keyboard = "0.8.0"
+
+[profile.dev]
+panic = "abort"
+debug = true
+
+[profile.release]
+panic = "abort"

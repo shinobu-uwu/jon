@@ -2,16 +2,17 @@ use alloc::vec::Vec;
 
 use crate::memory::{address::VirtualAddress, paging::PageFlags};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryDescriptor {
     pub regions: Vec<VirtualMemoryArea>,
     pub start_brk: u64,
     pub brk: u64,
     pub start_stack: u64,
     pub stack: u64,
+    pub entrypoint: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct VirtualMemoryArea {
     pub start: u64,
     pub end: u64,
@@ -19,7 +20,7 @@ struct VirtualMemoryArea {
     pub area_type: MemoryAreaType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum MemoryAreaType {
     Text,
     Data,
@@ -35,6 +36,7 @@ impl MemoryDescriptor {
             brk: 0,
             start_stack: 0,
             stack: 0,
+            entrypoint: 0,
         }
     }
 

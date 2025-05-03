@@ -45,4 +45,10 @@ impl Stack {
         self.len = self.bottom.as_usize() + self.size - top.as_usize();
         debug!("Stack top set to {:#x?}", top);
     }
+
+    /// Resets the stack to its original state
+    pub fn restart(&mut self) {
+        debug!("Restarting stack");
+        self.len = 0;
+    }
 }

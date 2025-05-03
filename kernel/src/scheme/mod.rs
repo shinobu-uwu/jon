@@ -18,7 +18,7 @@ use spinning_top::{
 use vga::VgaScheme;
 
 lazy_static! {
-    static ref SCHEMES: RwSpinlock<SchemeList> = {
+    pub static ref SCHEMES: RwSpinlock<SchemeList> = {
         debug!("Adding kernel schemes");
         let mut list = SchemeList::new();
         debug!("Adding VGA scheme");

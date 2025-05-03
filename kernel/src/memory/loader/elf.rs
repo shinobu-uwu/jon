@@ -120,7 +120,9 @@ impl Loader for ElfLoader {
         }
 
         self.apply_relocations(&elf, base_address.as_usize());
+        let entry = base_address.offset(elf.entry as usize);
+        memory_descriptor.entrypoint = entry.as_u64();
 
-        Ok((memory_descriptor, base_address.offset(elf.entry as usize)))
+        Ok((memory_descriptor, entry))
     }
 }

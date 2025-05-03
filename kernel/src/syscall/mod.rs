@@ -3,17 +3,19 @@ use core::{arch::naked_asm, mem::offset_of};
 use crate::{
     arch::x86::{
         gdt::{ProcessorControlRegion, GDT},
+        memory::{PMM, VMM},
         structures::Scratch,
     },
+    memory::{address::VirtualAddress, paging::PageFlags, physical::PhysicalMemoryManager},
     pop_scratch, push_scratch,
-    sched::scheduler::{current_pid, current_task, remove_current_task},
+    sched::scheduler::{current_pid, current_task, current_task_mut, remove_current_task},
     scheme::{schemes, CallerContext},
 };
 use libjon::{
-    errno::ENOENT,
+    errno::{EINVAL, ENOENT, ENOMEM},
     fd::{FileDescriptorFlags, FileDescriptorId},
     path::Path,
-    syscall::{SYS_EXIT, SYS_GETPID, SYS_LSEEK, SYS_OPEN, SYS_READ, SYS_WRITE},
+    syscall::{SYS_BRK, SYS_EXIT, SYS_GETPID, SYS_LSEEK, SYS_OPEN, SYS_READ, SYS_WRITE},
 };
 use log::{debug, error, info};
 use x86_64::{
@@ -110,6 +112,7 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
         SYS_READ => sys_read(arg1, arg2, arg3),
         SYS_GETPID => sys_getpid(),
         SYS_LSEEK => sys_lseek(arg1, arg2, arg3),
+        SYS_BRK => sys_brk(arg1),
         _ => {
             error!("Invalid syscall number: {}", syscall_number);
             Err(ENOENT)
@@ -229,4 +232,32 @@ fn sys_lseek(descriptor_id: usize, offset: usize, whence: usize) -> SyscallResul
     let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
     info!("Seeking in fd: {:?}", fd);
     scheme.lseek(fd.id, offset, whence.into(), ctx)
+}
+
+fn sys_brk(increment: usize) -> SyscallResult {
+    let task = current_task_mut().expect("ERROR: NO CURRENT TASK");
+
+    // For now we only support incrementing brk once
+    if task.memory_descriptor.brk != 0 {
+        return Err(EINVAL);
+    }
+
+    let brk_start = VirtualAddress::new(0x6000_0000 + (increment * task.pid.as_usize()));
+    let phys = PMM
+        .lock()
+        .allocate_contiguous(increment)
+        .map_err(|_| ENOMEM)?;
+    VMM.lock()
+        .map_range(
+            brk_start,
+            phys,
+            increment,
+            PageFlags::WRITABLE | PageFlags::USER_ACCESSIBLE | PageFlags::PRESENT,
+        )
+        .map_err(|_| ENOMEM)?;
+
+    let new_brk = task.memory_descriptor.brk + increment as u64;
+    task.memory_descriptor.brk = new_brk;
+
+    Ok(brk_start.as_usize())
 }

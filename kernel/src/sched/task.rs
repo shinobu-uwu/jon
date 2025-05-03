@@ -31,8 +31,8 @@ pub struct Task {
     pub fds: Vec<FileDescriptor>,
     pub kernel_stack: Stack,
     pub user_stack: Stack,
+    pub memory_descriptor: MemoryDescriptor,
     next_fd: usize,
-    memory_descriptor: MemoryDescriptor,
 }
 
 #[repr(u8)]
@@ -49,7 +49,7 @@ pub enum State {
     Running,
     Blocked,
     Waiting,
-    Zombie,
+    Stopped,
 }
 
 impl Task {
@@ -86,6 +86,40 @@ impl Task {
             memory_descriptor,
             quantum: 0,
             priority: Priority::Normal,
+            fds: Vec::new(),
+            next_fd: 1,
+        }
+    }
+
+    /// Creates a new task with the same binary, and stacks as the current task
+    pub fn restart(&mut self) -> Self {
+        info!("Restarting task {} with PID {}", self.name, self.pid);
+        let pid = Pid::new(Pid::next_pid());
+        let kernel_stack = Stack::new(
+            VirtualAddress::new(KERNEL_STACK_START + (pid.as_usize() - 1) * STACK_SIZE),
+            STACK_SIZE,
+        );
+        let user_stack = Stack::new(
+            VirtualAddress::new(USER_STACK_START + (pid.as_usize() - 1) * STACK_SIZE),
+            STACK_SIZE,
+        );
+        let mut context = Registers::new();
+        let memory_descriptor = self.memory_descriptor.clone();
+        context.iret.rsp = user_stack.top().as_u64();
+        context.iret.rip = memory_descriptor.entrypoint;
+        self.state = State::Stopped;
+
+        Self {
+            pid,
+            name: self.name.clone(),
+            parent: self.parent,
+            kernel_stack,
+            user_stack,
+            context,
+            state: State::Waiting,
+            memory_descriptor,
+            quantum: 0,
+            priority: self.priority,
             fds: Vec::new(),
             next_fd: 1,
         }

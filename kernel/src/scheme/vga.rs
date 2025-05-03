@@ -1,9 +1,6 @@
-use core::{
-    ptr::copy_nonoverlapping,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use core::ptr::copy_nonoverlapping;
 
-use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use libjon::{
     errno::{EINVAL, ENOENT},
     fd::{FileDescriptorFlags, FileDescriptorId},
@@ -22,28 +19,28 @@ use super::{CallerContext, KernelScheme, Whence};
 #[used]
 #[link_section = ".requests"]
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
-pub static FRAMEBUFFERS: RwSpinlock<Vec<Framebuffer>> = RwSpinlock::new(Vec::new());
 static DESCRIPTORS: RwSpinlock<BTreeMap<FileDescriptorId, FramebufferIndex>> =
     RwSpinlock::new(BTreeMap::new());
-static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferIndex(usize);
 
 #[derive(Debug)]
-pub struct VgaScheme;
+pub struct VgaScheme {
+    pub framebuffers: Arc<RwSpinlock<Vec<Framebuffer>>>,
+}
 
 #[derive(Debug)]
 pub struct Framebuffer {
     pub width: u64,
     pub height: u64,
     pub bpp: u16,
-    pub pitch: u64,
     pub inner: &'static mut [u8],
 }
 
-pub fn init_fbs() {
-    if let Some(res) = FRAMEBUFFER_REQUEST.get_response() {
+impl VgaScheme {
+    pub fn new() -> Self {
+        let res = FRAMEBUFFER_REQUEST.get_response().unwrap();
         let fbs: Vec<Framebuffer> = res
             .framebuffers()
             .into_iter()
@@ -55,20 +52,14 @@ pub fn init_fbs() {
                 Framebuffer {
                     width: fb.width(),
                     height: fb.height(),
-                    bpp: fb.bpp() / 8, // Convert bits to bytes
-                    pitch: fb.pitch(),
+                    bpp: fb.bpp(),
                     inner,
                 }
             })
             .collect();
-        FRAMEBUFFERS.write().extend(fbs);
-        INITIALIZED.store(true, Ordering::SeqCst);
-    }
-}
-
-impl VgaScheme {
-    pub fn new() -> Self {
-        Self
+        Self {
+            framebuffers: Arc::new(RwSpinlock::new(fbs)),
+        }
     }
 }
 
@@ -82,7 +73,7 @@ impl KernelScheme for VgaScheme {
         info!("Opening framebuffer: {}", path);
         let index: usize = path.parse().map_err(|_| EINVAL)?;
         let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;
-        FRAMEBUFFERS.read().get(index).ok_or(ENOENT)?;
+        self.framebuffers.clone().read().get(index).ok_or(ENOENT)?;
 
         let descriptor = FileDescriptor::new(ctx.scheme, FileDescriptorFlags::O_RDWR);
         let id = descriptor.id;
@@ -101,7 +92,7 @@ impl KernelScheme for VgaScheme {
         let descriptors = DESCRIPTORS.read();
         let framebuffer_index = descriptors.get(&descriptor_id).ok_or(EINVAL)?;
 
-        let framebuffers = FRAMEBUFFERS.read();
+        let framebuffers = self.framebuffers.read();
         let framebuffer = framebuffers.get(framebuffer_index.0).ok_or(ENOENT)?;
 
         let framebuffer_size = framebuffer.inner.len();
@@ -123,7 +114,7 @@ impl KernelScheme for VgaScheme {
         let descriptors = DESCRIPTORS.read();
         let framebuffer_index = descriptors.get(&descriptor_id).ok_or(EINVAL)?;
 
-        let mut framebuffers = FRAMEBUFFERS.write();
+        let mut framebuffers = self.framebuffers.write();
         let framebuffer = framebuffers.get_mut(framebuffer_index.0).ok_or(ENOENT)?;
 
         let framebuffer_size = framebuffer.inner.len();

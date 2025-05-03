@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(abi_x86_interrupt, naked_functions, fn_align)]
+#![feature(abi_x86_interrupt, naked_functions, fn_align, let_chains)]
 
 mod arch;
 mod memory;
@@ -18,7 +18,6 @@ use log::error;
 use output::logger;
 use sched::scheduler;
 use sched::task::Task;
-use task_manager::start_task_manager;
 use x86_64::instructions::interrupts::enable;
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -58,7 +57,13 @@ unsafe extern "C" fn kmain() -> ! {
         include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
     );
     scheduler::add_task(task);
-    start_task_manager();
+    let task = Task::new(
+        "task_manager",
+        include_bytes!(
+            "../../drivers/task_manager/target/x86_64-unknown-none/release/task_manager"
+        ),
+    );
+    scheduler::add_task(task);
     enable();
 
     hcf();
