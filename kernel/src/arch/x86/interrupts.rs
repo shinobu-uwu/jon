@@ -1,15 +1,17 @@
 use log::debug;
-use spinning_top::Spinlock;
 use x2apic::lapic::{xapic_base, LocalApic, LocalApicBuilder};
 
-use crate::memory::paging::phys_to_virt;
+use crate::{arch::x86::cpu::current_pcr, memory::paging::phys_to_virt};
 
-pub static LAPIC: Spinlock<Option<LocalApic>> = Spinlock::new(None);
+use super::cpu::MAX_CPUS;
+
+static mut LAPICS: [Option<LocalApic>; MAX_CPUS] = [const { None }; MAX_CPUS];
 pub const TIMER_VECTOR: usize = 32;
 pub const ERROR_VECTOR: usize = TIMER_VECTOR + 1;
 pub const SPURIOUS_VECTOR: usize = ERROR_VECTOR + 1;
 
 pub(super) fn init() {
+    let pcr = current_pcr();
     let phys_lapic = unsafe { xapic_base() };
     let virt_lapic = phys_to_virt(phys_lapic as usize);
 
@@ -33,8 +35,17 @@ pub(super) fn init() {
     }
 
     debug!("Storing LAPIC instance");
-    *LAPIC.lock() = Some(lapic);
+
+    unsafe {
+        LAPICS[pcr.lapic_id as usize] = Some(lapic);
+    }
+
     debug!("LAPIC initialization complete");
+}
+
+pub fn current_lapic_mut() -> &'static mut LocalApic {
+    let pcr = current_pcr();
+    unsafe { LAPICS[pcr.lapic_id as usize].as_mut().unwrap() }
 }
 
 #[macro_export]

@@ -1,4 +1,6 @@
-use super::gdt::GDT;
+use log::info;
+
+use super::cpu::current_pcr;
 
 #[derive(Debug, Default)]
 #[repr(C)]
@@ -47,10 +49,9 @@ impl Registers {
     pub fn new() -> Self {
         let mut stack = Self::default();
         stack.iret.rflags = x86_64::registers::rflags::RFlags::INTERRUPT_FLAG.bits();
-        unsafe {
-            stack.iret.cs = GDT.1.user_code_selector.0 as u64;
-            stack.iret.ss = GDT.1.user_data_selector.0 as u64;
-        }
+        let selectors = current_pcr().selectors.as_ref().unwrap();
+        stack.iret.cs = selectors.user_code_selector.0 as u64;
+        stack.iret.ss = selectors.user_data_selector.0 as u64;
 
         stack
     }

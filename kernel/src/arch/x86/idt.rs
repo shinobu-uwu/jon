@@ -1,59 +1,13 @@
 use crate::arch::end_of_interrupt;
-use crate::arch::x86::interrupts::{ERROR_VECTOR, LAPIC, SPURIOUS_VECTOR, TIMER_VECTOR};
+use crate::arch::x86::cpu::{current_pcr, PCRS};
+use crate::arch::x86::interrupts::{ERROR_VECTOR, SPURIOUS_VECTOR, TIMER_VECTOR};
 use crate::interrupt;
-use crate::sched::scheduler::schedule;
-use lazy_static::lazy_static;
-use log::{debug, info};
+use log::{debug, info, warn};
 use spinning_top::Spinlock;
 use x86_64::registers::control::Cr2;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
+use x86_64::structures::idt::{InterruptStackFrame, PageFaultErrorCode};
 
 static LAST_EXCEPTION: Spinlock<Option<ExceptionInfo>> = Spinlock::new(None);
-
-lazy_static! {
-    pub static ref IDT: InterruptDescriptorTable = {
-        let mut idt = InterruptDescriptorTable::new();
-
-        idt.divide_error.set_handler_fn(divide_error_handler);
-        idt.debug.set_handler_fn(debug_handler);
-        idt.non_maskable_interrupt.set_handler_fn(nmi_handler);
-        idt.breakpoint.set_handler_fn(breakpoint_handler);
-        idt.overflow.set_handler_fn(overflow_handler);
-        idt.bound_range_exceeded.set_handler_fn(bound_range_handler);
-        idt.invalid_opcode.set_handler_fn(invalid_opcode_handler);
-        idt.device_not_available.set_handler_fn(device_not_available_handler);
-
-        unsafe {
-            idt.double_fault
-                .set_handler_fn(double_fault_handler)
-                .set_stack_index(crate::arch::x86::gdt::DOUBLE_FAULT_IST_INDEX);
-        }
-
-        idt.invalid_tss.set_handler_fn(invalid_tss_handler);
-        idt.segment_not_present.set_handler_fn(segment_not_present_handler);
-        idt.stack_segment_fault.set_handler_fn(stack_segment_fault_handler);
-        idt.general_protection_fault.set_handler_fn(general_protection_fault_handler);
-        idt.page_fault.set_handler_fn(page_fault_handler);
-        idt.x87_floating_point.set_handler_fn(x87_floating_point_handler);
-        idt.alignment_check.set_handler_fn(alignment_check_handler);
-        idt.machine_check.set_handler_fn(machine_check_handler);
-        idt.simd_floating_point.set_handler_fn(simd_floating_point_handler);
-        idt.virtualization.set_handler_fn(virtualization_handler);
-        idt.cp_protection_exception.set_handler_fn(cp_protection_handler);
-
-        // LAPIC interrupts
-        idt[TIMER_VECTOR as u8].set_handler_fn(timer_interrupt_handler);
-        idt[ERROR_VECTOR as u8].set_handler_fn(error_interrupt_handler);
-        idt[SPURIOUS_VECTOR as u8].set_handler_fn(spurious_interrupt_handler);
-
-        idt
-    };
-}
-
-interrupt!(timer_interrupt_handler, |interrupt_stack| {
-    end_of_interrupt();
-    schedule(interrupt_stack);
-});
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -63,10 +17,71 @@ struct ExceptionInfo {
     cr2: u64,
 }
 
-pub fn init() {
-    IDT.load();
+pub fn init(cpu_id: u32) {
+    let pcr = unsafe { PCRS.get_mut(cpu_id as usize).unwrap() };
+    debug!("Loading IDT for cpu {}", pcr.id);
+    pcr.idt.divide_error.set_handler_fn(divide_error_handler);
+    pcr.idt.debug.set_handler_fn(debug_handler);
+    pcr.idt.non_maskable_interrupt.set_handler_fn(nmi_handler);
+    pcr.idt.breakpoint.set_handler_fn(breakpoint_handler);
+    pcr.idt.overflow.set_handler_fn(overflow_handler);
+    pcr.idt
+        .bound_range_exceeded
+        .set_handler_fn(bound_range_handler);
+    pcr.idt
+        .invalid_opcode
+        .set_handler_fn(invalid_opcode_handler);
+    pcr.idt
+        .device_not_available
+        .set_handler_fn(device_not_available_handler);
+
+    unsafe {
+        pcr.idt
+            .double_fault
+            .set_handler_fn(double_fault_handler)
+            .set_stack_index(crate::arch::x86::gdt::DOUBLE_FAULT_IST_INDEX);
+    }
+
+    pcr.idt.invalid_tss.set_handler_fn(invalid_tss_handler);
+    pcr.idt
+        .segment_not_present
+        .set_handler_fn(segment_not_present_handler);
+    pcr.idt
+        .stack_segment_fault
+        .set_handler_fn(stack_segment_fault_handler);
+    pcr.idt
+        .general_protection_fault
+        .set_handler_fn(general_protection_fault_handler);
+    pcr.idt.page_fault.set_handler_fn(page_fault_handler);
+    pcr.idt
+        .x87_floating_point
+        .set_handler_fn(x87_floating_point_handler);
+    pcr.idt
+        .alignment_check
+        .set_handler_fn(alignment_check_handler);
+    pcr.idt.machine_check.set_handler_fn(machine_check_handler);
+    pcr.idt
+        .simd_floating_point
+        .set_handler_fn(simd_floating_point_handler);
+    pcr.idt
+        .virtualization
+        .set_handler_fn(virtualization_handler);
+    pcr.idt
+        .cp_protection_exception
+        .set_handler_fn(cp_protection_handler);
+    pcr.idt[TIMER_VECTOR as u8].set_handler_fn(timer_interrupt_handler);
+    pcr.idt[ERROR_VECTOR as u8].set_handler_fn(error_interrupt_handler);
+    pcr.idt[SPURIOUS_VECTOR as u8].set_handler_fn(spurious_interrupt_handler);
+    pcr.idt.load();
     debug!("IDT loaded")
 }
+
+interrupt!(timer_interrupt_handler, |interrupt_stack| {
+    end_of_interrupt();
+    let pcr = current_pcr();
+    info!("Timer interrupt on CPU {}", pcr.id);
+    // schedule(interrupt_stack);
+});
 
 // Exception Handlers
 extern "x86-interrupt" fn divide_error_handler(stack_frame: InterruptStackFrame) {
@@ -228,13 +243,13 @@ extern "x86-interrupt" fn error_interrupt_handler(_frame: InterruptStackFrame) {
     info!("Error interrupt");
     unsafe {
         debug!("Notifying end of interrupt");
-        LAPIC.lock().as_mut().unwrap().end_of_interrupt();
+        end_of_interrupt();
         debug!("Notified end of interrupt");
     }
 }
 
 extern "x86-interrupt" fn spurious_interrupt_handler(_frame: InterruptStackFrame) {
-    debug!("Handling spurious");
+    warn!("Handling spurious");
 }
 
 fn exception_name(vector: u32) -> &'static str {

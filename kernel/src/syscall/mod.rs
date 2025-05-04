@@ -2,7 +2,7 @@ use core::{arch::naked_asm, mem::offset_of};
 
 use crate::{
     arch::x86::{
-        gdt::{ProcessorControlRegion, GDT},
+        cpu::{ProcessorControlRegion, PCRS},
         memory::{PMM, VMM},
         structures::Scratch,
     },
@@ -29,22 +29,22 @@ use x86_64::{
 
 type SyscallResult = Result<usize, i32>;
 
-pub(super) fn init() {
+pub(super) fn init(cpu_id: u32) {
+    let pcr = unsafe { PCRS.get_mut(cpu_id as usize).unwrap() };
     // Enable syscall/sysret
     unsafe {
         Efer::update(|efer| {
             efer.insert(EferFlags::SYSTEM_CALL_EXTENSIONS);
         });
     }
+    let selectors = pcr.selectors.as_ref().unwrap();
 
-    let (kernel_cs, kernel_ss, user_cs, user_ss) = unsafe {
-        (
-            GDT.1.kernel_code_selector,
-            GDT.1.kernel_data_selector,
-            GDT.1.user_code_selector,
-            GDT.1.user_data_selector,
-        )
-    };
+    let (kernel_cs, kernel_ss, user_cs, user_ss) = (
+        selectors.kernel_code_selector,
+        selectors.kernel_data_selector,
+        selectors.user_code_selector,
+        selectors.user_data_selector,
+    );
 
     match Star::write(user_cs, user_ss, kernel_cs, kernel_ss) {
         Ok(_) => {

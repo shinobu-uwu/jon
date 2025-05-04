@@ -5,7 +5,7 @@ use alloc::{
 use log::{debug, info};
 use spinning_top::{RwSpinlock, Spinlock};
 
-use crate::arch::{self, x86::structures::Registers};
+use crate::arch::x86::{cpu::current_pcr_mut, structures::Registers};
 
 use super::{
     pid::Pid,
@@ -15,115 +15,16 @@ use super::{
 pub static TASKS: RwSpinlock<BTreeMap<Pid, Task>> = RwSpinlock::new(BTreeMap::new());
 pub static READY_QUEUE: Spinlock<VecDeque<Pid>> = Spinlock::new(VecDeque::new());
 pub static BLOCKED_QUEUE: Spinlock<VecDeque<Pid>> = Spinlock::new(VecDeque::new());
-pub static CURRENT_PID: Spinlock<Option<Pid>> = Spinlock::new(None);
-pub static IDLE_PID: Spinlock<Option<Pid>> = Spinlock::new(None);
-
+//
+// Constants for scheduler tuning
 const QUANTUM_BASE: u64 = 8;
 const HIGH_PRIORITY_BONUS: u64 = 24;
 const LOW_PRIORITY_PENALTY: u64 = 6;
 
-pub unsafe fn init() {
-    debug!("Initializing scheduler");
-    let mut idle_pid = IDLE_PID.lock();
+pub unsafe fn schedule(stack_frame: &Registers) {}
 
-    if idle_pid.is_none() {
-        debug!("Creating idle task");
-        let task = Task::idle();
-        let pid = task.pid;
-        TASKS.write().insert(pid, task);
-        *idle_pid = Some(pid);
-    }
-
-    debug!("Scheduler initialized");
-}
-
-pub unsafe fn schedule(stack_frame: &Registers) {
-    let mut current_pid_guard = CURRENT_PID.lock();
-    let mut ready_queue_guard = READY_QUEUE.lock();
-
-    // Handle idle task if needed
-    if current_pid_guard.is_none() && ready_queue_guard.is_empty() {
-        let idle_pid = *IDLE_PID.lock();
-        if let Some(idle) = idle_pid {
-            if !ready_queue_guard.contains(&idle) {
-                ready_queue_guard.push_back(idle);
-            }
-        }
-    }
-
-    // Determine next task to run
-    let next_pid = match *current_pid_guard {
-        Some(pid) => {
-            let mut tasks_guard = TASKS.write();
-            let current_task = tasks_guard.get_mut(&pid).unwrap();
-            current_task.quantum += 1;
-
-            let quantum_limit = match current_task.priority {
-                Priority::High => QUANTUM_BASE + HIGH_PRIORITY_BONUS,
-                Priority::Normal => QUANTUM_BASE,
-                Priority::Low => QUANTUM_BASE - LOW_PRIORITY_PENALTY,
-            };
-
-            if current_task.quantum >= quantum_limit {
-                current_task.quantum = 0;
-                if matches!(current_task.state, State::Running) {
-                    ready_queue_guard.push_back(pid);
-                }
-                ready_queue_guard.pop_front()
-            } else {
-                None
-            }
-        }
-        None => ready_queue_guard.pop_front(),
-    };
-
-    match (next_pid, *current_pid_guard) {
-        (Some(next), Some(current)) => {
-            {
-                let mut tasks_guard = TASKS.write();
-                let prev_task = tasks_guard.get_mut(&current).unwrap();
-                prev_task.state = State::Waiting;
-                prev_task.quantum = 0; // Reset quantum when switching away
-
-                let next_task = tasks_guard.get_mut(&next).unwrap();
-                next_task.state = State::Running;
-            }
-
-            *current_pid_guard = Some(next);
-
-            let prev_task_ptr = get_task_mut(current).unwrap() as *mut Task;
-            let next_task_ptr = get_task_mut(next).unwrap() as *mut Task;
-
-            drop(ready_queue_guard);
-            drop(current_pid_guard);
-
-            let prev_task_ref = &mut *prev_task_ptr;
-            let next_task_ref = &*next_task_ptr;
-
-            arch::switch_to(Some(prev_task_ref), next_task_ref, stack_frame);
-        }
-        (Some(next), None) => {
-            {
-                let mut tasks_guard = TASKS.write();
-                let next_task = tasks_guard.get_mut(&next).unwrap();
-                next_task.state = State::Running;
-            }
-
-            *current_pid_guard = Some(next);
-
-            let next_task_ptr = get_task_mut(next).unwrap() as *mut Task;
-
-            drop(ready_queue_guard);
-            drop(current_pid_guard);
-
-            let next_task_ref = &*next_task_ptr;
-
-            arch::switch_to(None, next_task_ref, stack_frame);
-        }
-        _ => {
-            // No task to schedule
-        }
-    }
+fn balance_load() {
+    todo!()
 }
 
 pub fn add_task(task: Task) {

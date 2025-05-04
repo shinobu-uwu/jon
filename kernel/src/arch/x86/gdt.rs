@@ -1,107 +1,75 @@
 use core::ptr::addr_of;
-use core::usize;
 
 use log::debug;
-use x86_64::instructions::tables::load_tss;
-use x86_64::registers::segmentation::{Segment, CS, SS};
-use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector};
-use x86_64::structures::tss::TaskStateSegment;
-use x86_64::VirtAddr;
+use x86_64::{
+    instructions::tables::load_tss,
+    registers::segmentation::{Segment, CS, SS},
+    structures::gdt::{Descriptor, SegmentSelector},
+    VirtAddr,
+};
 
-use crate::memory::address::VirtualAddress;
+use crate::{arch::x86::cpu::PCRS, memory::address::VirtualAddress};
+
+use super::cpu::{current_pcr_mut, MAX_CPUS};
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 pub const IA32_GS_BASE: u32 = 0xC0000101;
 pub const IA32_KERNEL_GS_BASE: u32 = 0xC0000102;
 
-pub static mut TSS: TaskStateSegment = TaskStateSegment::new();
-static mut PCR: ProcessorControlRegion = ProcessorControlRegion {
-    user_rsp: 0,
-    kernel_rsp: 0,
-};
-
-pub static mut GDT: (GlobalDescriptorTable, Selectors) = {
-    let mut gdt = GlobalDescriptorTable::new();
-    let kernel_code_selector = gdt.append(Descriptor::kernel_code_segment());
-    let kernel_data_selector = gdt.append(Descriptor::kernel_data_segment());
-    let user_data_selector = gdt.append(Descriptor::user_data_segment());
-    let user_code_selector = gdt.append(Descriptor::user_code_segment());
-
-    (
-        gdt,
-        Selectors {
-            kernel_code_selector,
-            kernel_data_selector,
-            user_code_selector,
-            user_data_selector,
-            tss_selector: None,
-        },
-    )
-};
-
 #[repr(C)]
-pub struct ProcessorControlRegion {
-    pub user_rsp: u64,
-    pub kernel_rsp: u64,
-}
-
-#[repr(C)]
+#[derive(Debug, Clone)]
 pub struct Selectors {
     pub kernel_code_selector: SegmentSelector,
     pub kernel_data_selector: SegmentSelector,
     pub user_code_selector: SegmentSelector,
     pub user_data_selector: SegmentSelector,
-    pub tss_selector: Option<SegmentSelector>,
 }
 
-pub fn init() {
+const STACK_SIZE: usize = 4096 * 5;
+static CPU_INTERRUPT_STACKS: [[u8; STACK_SIZE]; MAX_CPUS] = [[0; STACK_SIZE]; MAX_CPUS];
+static CPU_KERNEL_STACKS: [[u8; STACK_SIZE]; MAX_CPUS] = [[0; STACK_SIZE]; MAX_CPUS];
+
+pub fn init(cpu_id: u32) {
     unsafe {
-        TSS.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
-            const STACK_SIZE: usize = 4096 * 5;
-            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+        let pcr = PCRS.get_mut(cpu_id as usize).unwrap();
 
-            let stack_start = VirtAddr::from_ptr(addr_of!(STACK));
+        let kernel_code_selector = pcr.gdt.append(Descriptor::kernel_code_segment());
+        let kernel_data_selector = pcr.gdt.append(Descriptor::kernel_data_segment());
+        let user_data_selector = pcr.gdt.append(Descriptor::user_data_segment());
+        let user_code_selector = pcr.gdt.append(Descriptor::user_code_segment());
+
+        pcr.tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
+            let stack_start = VirtAddr::from_ptr(addr_of!(CPU_INTERRUPT_STACKS[cpu_id as usize]));
             stack_start + STACK_SIZE as u64
         };
 
-        TSS.privilege_stack_table[0] = {
-            const STACK_SIZE: usize = 4096 * 5;
-            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
-
-            let stack_start = VirtAddr::from_ptr(addr_of!(STACK));
+        pcr.tss.privilege_stack_table[0] = {
+            let stack_start = VirtAddr::from_ptr(addr_of!(CPU_KERNEL_STACKS[cpu_id as usize]));
             stack_start + STACK_SIZE as u64
         };
 
-        let tss_selector = GDT.0.append(Descriptor::tss_segment(&TSS));
+        let tss_selector = pcr.gdt.append(Descriptor::tss_segment(&pcr.tss));
 
-        GDT.0.load();
+        pcr.gdt.load();
 
-        CS::set_reg(GDT.1.kernel_code_selector);
-        SS::set_reg(GDT.1.kernel_data_selector);
+        CS::set_reg(kernel_code_selector);
+        SS::set_reg(kernel_data_selector);
         load_tss(tss_selector);
 
-        let pcr_addr = addr_of!(PCR) as u64;
-
-        core::arch::asm!(
-            "wrmsr",
-            in("rcx") IA32_KERNEL_GS_BASE,
-            in("rax") pcr_addr,
-            in("rdx") pcr_addr >> 32,
-        );
-        core::arch::asm!(
-            "wrmsr",
-            in("rcx") IA32_GS_BASE,
-            in("rax") pcr_addr,
-            in("rdx") pcr_addr >> 32,
-        );
+        let selectors = Selectors {
+            kernel_code_selector,
+            kernel_data_selector,
+            user_code_selector,
+            user_data_selector,
+        };
+        pcr.selectors = Some(selectors);
     }
 
     debug!("GDT loaded");
 }
 
 pub fn set_tss_kernel_stack(stack: VirtualAddress) {
-    unsafe {
-        TSS.privilege_stack_table[0] = VirtAddr::new(stack.as_u64());
-        PCR.kernel_rsp = stack.as_u64();
-    }
+    let pcr = current_pcr_mut();
+    pcr.tss.privilege_stack_table[0] = VirtAddr::new(stack.as_u64());
+    pcr.kernel_rsp = stack.as_u64();
 }
