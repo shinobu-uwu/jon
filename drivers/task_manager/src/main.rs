@@ -24,7 +24,7 @@ pub extern "C" fn _start() -> ! {
     let fb = Framebuffer::default();
     let mut writer = FramebufferWriter::new(fb_fd, fb);
     let mut buf = [0u8; 128 * core::mem::size_of::<Proc>()];
-    let mut selected_task: usize = 0;
+    let selected_task: usize = 0;
 
     loop {
         writer.clear();
@@ -49,7 +49,6 @@ pub extern "C" fn _start() -> ! {
             Color::White,
         );
         let y_offset = FONT_SIZE.val() * 2 + 8;
-        selected_task = selected_task.wrapping_add(1).min(procs.len() - 1);
 
         for (i, proc) in procs.iter().enumerate() {
             let row_y = y_offset + i * (FONT_SIZE.val() + 8);
@@ -70,11 +69,11 @@ pub extern "C" fn _start() -> ! {
                 State::Waiting => "Esperando",
                 State::Stopped => "Parada",
             };
+
             let name = CStr::from_bytes_until_nul(&proc.name)
                 .unwrap()
                 .to_str()
                 .unwrap();
-
             let text = format!("{:>3} {:<16} {:<10}", proc.pid, name, state_label);
             writer.write_text(0, row_y, &text, color);
         }

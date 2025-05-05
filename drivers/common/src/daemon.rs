@@ -8,6 +8,8 @@ use crate::{
     ExitCode,
 };
 
+pub const REINCARNATION_PID: usize = 1;
+
 pub struct Daemon {
     serial: usize,
     read_pipe: usize,
@@ -44,12 +46,12 @@ impl Daemon {
         let len = bytes.len().min(15);
         name_buf[..len].copy_from_slice(bytes);
         name_buf[len] = 0;
-        let reincarnation_pipe = syscall::fs::open("pipe:2/read", 0x1).unwrap();
+        let reincarnation_pipe = syscall::fs::open("pipe:1/read", 0x1).unwrap();
         let message = Message::new(MessageType::Write, name_buf);
         syscall::fs::write(reincarnation_pipe, message.to_bytes()).unwrap();
         self.log(format_args!("Registered daemon {}", name));
 
-        let response_pipe = syscall::fs::open("pipe:2/write", 0x2).unwrap();
+        let response_pipe = syscall::fs::open("pipe:1/write", 0x2).unwrap();
         let mut buf = [0u8; 8];
         let mut result = read(response_pipe, &mut buf);
 
@@ -77,12 +79,12 @@ impl Daemon {
         name_buf[..len].copy_from_slice(bytes);
         name_buf[len] = 0;
 
-        let request_pipe = syscall::fs::open("pipe:2/read", 0x1).unwrap();
+        let request_pipe = syscall::fs::open("pipe:1/read", 0x1).unwrap();
         let message = Message::new(MessageType::Read, name_buf);
         syscall::fs::write(request_pipe, message.to_bytes()).unwrap();
         self.log(format_args!("Sent message to reincarnation"));
 
-        let response_pipe = syscall::fs::open("pipe:2/write", 0x2).unwrap();
+        let response_pipe = syscall::fs::open("pipe:1/write", 0x2).unwrap();
         let mut buf = [0u8; 8];
 
         let mut result = read(response_pipe, &mut buf);
@@ -163,11 +165,11 @@ pub fn get_daemon_pid(name: &str) -> Option<usize> {
     name_buf[..len].copy_from_slice(bytes);
     name_buf[len] = 0;
 
-    let request_pipe = syscall::fs::open("pipe:2/read", 0x1).unwrap();
+    let request_pipe = syscall::fs::open("pipe:1/read", 0x1).unwrap();
     let message = Message::new(MessageType::Read, name_buf);
     syscall::fs::write(request_pipe, message.to_bytes()).unwrap();
 
-    let response_pipe = syscall::fs::open("pipe:2/write", 0x2).unwrap();
+    let response_pipe = syscall::fs::open("pipe:1/write", 0x2).unwrap();
     let mut buf = [0u8; 8];
 
     let mut result = read(response_pipe, &mut buf);

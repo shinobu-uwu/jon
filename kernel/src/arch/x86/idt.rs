@@ -2,6 +2,7 @@ use crate::arch::end_of_interrupt;
 use crate::arch::x86::cpu::{current_pcr, PCRS};
 use crate::arch::x86::interrupts::{ERROR_VECTOR, SPURIOUS_VECTOR, TIMER_VECTOR};
 use crate::interrupt;
+use crate::sched::scheduler::schedule;
 use log::{debug, info, warn};
 use spinning_top::Spinlock;
 use x86_64::registers::control::Cr2;
@@ -78,9 +79,7 @@ pub fn init(cpu_id: u32) {
 
 interrupt!(timer_interrupt_handler, |interrupt_stack| {
     end_of_interrupt();
-    let pcr = current_pcr();
-    info!("Timer interrupt on CPU {}", pcr.id);
-    // schedule(interrupt_stack);
+    schedule(interrupt_stack);
 });
 
 // Exception Handlers

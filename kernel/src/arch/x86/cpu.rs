@@ -16,7 +16,7 @@ use crate::{
         idt, interrupts,
     },
     hcf,
-    sched::task::Task,
+    sched::{pid::Pid, scheduler::TASKS, task::Task},
     syscall,
 };
 
@@ -46,7 +46,7 @@ pub struct ProcessorControlRegion {
     pub idt: InterruptDescriptorTable,
     pub sched: SchedulerInfo,
     pub selectors: Option<Selectors>,
-    idle_task: Option<Task>,
+    idle_task: Option<Pid>,
 }
 
 impl ProcessorControlRegion {
@@ -65,12 +65,15 @@ impl ProcessorControlRegion {
         }
     }
 
-    pub fn idle_task(&mut self) -> &Task {
+    pub fn idle_task(&mut self) -> Pid {
         if self.idle_task.is_none() {
-            self.idle_task = Some(Task::idle());
+            let task = Task::idle();
+            let pid = task.pid;
+            TASKS.write().insert(pid, task);
+            self.idle_task = Some(pid);
         }
 
-        self.idle_task.as_ref().unwrap()
+        self.idle_task.unwrap()
     }
 }
 
@@ -151,7 +154,7 @@ fn init_cpu(cpu: &Cpu) {
     enable();
 }
 
-fn get_pcr(cpu_id: u64) -> &'static ProcessorControlRegion {
+pub fn get_pcr(cpu_id: u64) -> &'static ProcessorControlRegion {
     // this is safe because we are in the kernel and we know the cpu_id is valid
     // plus each cpu has its own PCR and only it can change it
     unsafe {
@@ -160,7 +163,7 @@ fn get_pcr(cpu_id: u64) -> &'static ProcessorControlRegion {
     }
 }
 
-fn get_pcr_mut(cpu_id: u64) -> &'static mut ProcessorControlRegion {
+pub fn get_pcr_mut(cpu_id: u64) -> &'static mut ProcessorControlRegion {
     // this is safe because we are in the kernel and we know the cpu_id is valid
     // plus each cpu has its own PCR and only it can change it
     unsafe {

@@ -1,7 +1,10 @@
-use log::debug;
+use log::{debug, info};
 
 use crate::{
-    arch::x86::memory::{PMM, VMM},
+    arch::x86::{
+        cpu::current_pcr,
+        memory::{PMM, VMM},
+    },
     memory::{address::VirtualAddress, paging::PageFlags, physical::PhysicalMemoryManager},
 };
 
@@ -31,6 +34,14 @@ impl Stack {
         Self {
             bottom,
             size,
+            len: 0,
+        }
+    }
+
+    pub const fn empty() -> Self {
+        Self {
+            bottom: VirtualAddress::new(0),
+            size: 0,
             len: 0,
         }
     }

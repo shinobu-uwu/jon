@@ -1,9 +1,13 @@
-use core::{fmt::Display, usize};
+use core::{
+    fmt::Display,
+    sync::atomic::{AtomicUsize, Ordering},
+    usize,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pid(usize);
 
-static mut NEXT_PID: usize = 1;
+static NEXT_PID: AtomicUsize = AtomicUsize::new(1);
 
 impl Pid {
     pub const fn new(pid: usize) -> Self {
@@ -11,11 +15,7 @@ impl Pid {
     }
 
     pub fn next_pid() -> usize {
-        unsafe {
-            let pid = NEXT_PID;
-            NEXT_PID += 1;
-            pid
-        }
+        NEXT_PID.fetch_add(1, Ordering::SeqCst)
     }
 
     pub const fn is_root(&self) -> bool {

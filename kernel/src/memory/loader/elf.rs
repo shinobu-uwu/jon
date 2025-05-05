@@ -1,8 +1,11 @@
 use goblin::elf::{self, program_header::ProgramHeader, reloc::R_X86_64_RELATIVE, Elf};
-use log::{debug, error};
+use log::{debug, error, info};
 
 use crate::{
-    arch::x86::memory::{PMM, VMM},
+    arch::x86::{
+        cpu::current_pcr,
+        memory::{PMM, VMM},
+    },
     memory::{
         address::VirtualAddress,
         loader::{Loader, LoadingError},

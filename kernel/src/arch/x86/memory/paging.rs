@@ -144,7 +144,10 @@ impl VirtualMemoryManager for X86VirtualMemoryManager {
                 Err(MapError::InvalidAddress)
             }
             Err(MapToError::PageAlreadyMapped(_)) => {
-                warn!("Page already mapped");
+                warn!(
+                    "Virtual address {:#x} is already mapped",
+                    virtual_addr.as_u64()
+                );
                 Err(MapError::AlreadyMapped)
             }
         }

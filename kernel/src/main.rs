@@ -13,11 +13,11 @@ use core::arch::asm;
 
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
-use log::error;
+use log::{error, info};
 use output::logger;
-use sched::scheduler;
+use sched::scheduler::{self, add_task};
 use sched::task::Task;
-use x86_64::instructions::interrupts::enable;
+use x86_64::instructions::interrupts::{self, enable};
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -42,26 +42,37 @@ unsafe extern "C" fn kmain() -> ! {
     assert!(BASE_REVISION.is_supported());
     logger::init().unwrap();
     arch::init();
-    // scheduler::init();
-    // let task = Task::new(
-    //     "reincarnation",
-    //     include_bytes!(
-    //         "../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
-    //     ),
-    // );
-    // scheduler::add_task(task);
-    // let task = Task::new(
+    interrupts::disable();
+    let task1 = Task::new(
+        "reincarnation",
+        include_bytes!(
+            "../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
+        ),
+    );
+    add_task(task1, Some(0));
+    let task2 = Task::new(
+        "random",
+        include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
+    );
+    add_task(task2, Some(0));
+    let task3 = Task::new(
+        "task_manager",
+        include_bytes!(
+            "../../drivers/task_manager/target/x86_64-unknown-none/release/task_manager"
+        ),
+    );
+    add_task(task3, Some(1));
+    interrupts::enable();
+    // let task2 = Task::new(
     //     "random",
     //     include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
     // );
-    // scheduler::add_task(task);
-    // let task = Task::new(
+    // let task2 = Task::new(
     //     "task_manager",
     //     include_bytes!(
     //         "../../drivers/task_manager/target/x86_64-unknown-none/release/task_manager"
     //     ),
     // );
-    // scheduler::add_task(task);
 
     hcf();
 }

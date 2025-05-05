@@ -8,7 +8,7 @@ use libjon::{
     errno::{EAGAIN, EINVAL, ENOENT},
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
-use log::{debug, info};
+use log::debug;
 use spinning_top::RwSpinlock;
 
 use crate::sched::{fd::FileDescriptor, pid::Pid, scheduler::get_task_mut};

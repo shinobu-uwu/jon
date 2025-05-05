@@ -76,6 +76,10 @@ impl KernelScheme for ProcScheme {
             let tasks = get_tasks();
 
             for task in tasks.iter() {
+                if task.name == "idle" {
+                    continue;
+                }
+
                 let mut name_buf = [0u8; 16];
                 let len = task.name.len().min(15);
                 name_buf[..len].copy_from_slice(task.name.as_bytes());
