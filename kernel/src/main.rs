@@ -63,16 +63,6 @@ unsafe extern "C" fn kmain() -> ! {
     );
     add_task(task3, Some(1));
     interrupts::enable();
-    // let task2 = Task::new(
-    //     "random",
-    //     include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
-    // );
-    // let task2 = Task::new(
-    //     "task_manager",
-    //     include_bytes!(
-    //         "../../drivers/task_manager/target/x86_64-unknown-none/release/task_manager"
-    //     ),
-    // );
 
     hcf();
 }

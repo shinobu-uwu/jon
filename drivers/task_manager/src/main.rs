@@ -4,7 +4,8 @@
 use core::ffi::CStr;
 
 use alloc::{format, vec::Vec};
-use jon_common::syscall::fs::{open, read};
+use jon_common::syscall::fs::{open, read, write};
+use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet2, layouts};
 use proc::{Proc, State};
 use ui::{Color, FONT_SIZE, Framebuffer, FramebufferWriter};
 
@@ -20,11 +21,17 @@ pub extern "C" fn _start() -> ! {
     let serial_fd = open("serial:", 0x0).unwrap();
     let fb_fd = open("vga:0", 0x0).unwrap();
     let keyboard_fd = open("ps2:", 0x0).unwrap();
+    let mut kb_buf = [0u8; 3];
+    let mut keyboard = Keyboard::new(
+        ScancodeSet2::new(),
+        layouts::Us104Key,
+        HandleControl::Ignore,
+    );
     let proc_fd = open("proc:", 0x0).unwrap();
     let fb = Framebuffer::default();
     let mut writer = FramebufferWriter::new(fb_fd, fb);
     let mut buf = [0u8; 128 * core::mem::size_of::<Proc>()];
-    let selected_task: usize = 0;
+    let mut selected_task: usize = 0;
 
     loop {
         writer.clear();
@@ -87,5 +94,43 @@ pub extern "C" fn _start() -> ! {
         );
 
         writer.flush();
+
+        match read(keyboard_fd, &mut kb_buf) {
+            Ok(_) => {
+                if let Ok(Some(key_event)) = keyboard.add_byte(kb_buf[0]) {
+                    if let Some(key) = keyboard.process_keyevent(key_event) {
+                        match key {
+                            DecodedKey::Unicode(k) => {
+                                if k == 'k' {
+                                    write(serial_fd, b"Killing task!!").unwrap();
+                                }
+                            }
+                            DecodedKey::RawKey(k) => match k {
+                                KeyCode::ArrowUp => {
+                                    if selected_task > 0 {
+                                        selected_task -= 1;
+                                    }
+                                }
+                                KeyCode::ArrowDown => {
+                                    if selected_task < procs.len() - 1 {
+                                        selected_task += 1;
+                                    }
+                                }
+                                KeyCode::Return => {
+                                    let pid = procs[selected_task].pid;
+                                    write(
+                                        serial_fd,
+                                        format!("Restarting task with PID: {}", pid).as_bytes(),
+                                    )
+                                    .unwrap();
+                                }
+                                _ => {}
+                            },
+                        }
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
     }
 }
