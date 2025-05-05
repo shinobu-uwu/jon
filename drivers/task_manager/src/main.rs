@@ -4,7 +4,10 @@
 use core::ffi::CStr;
 
 use alloc::{format, vec::Vec};
-use jon_common::syscall::fs::{open, read, write};
+use jon_common::syscall::{
+    fs::{open, read, write},
+    task::kill,
+};
 use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet2, layouts};
 use proc::{Proc, State};
 use ui::{Color, FONT_SIZE, Framebuffer, FramebufferWriter};
@@ -31,7 +34,7 @@ pub extern "C" fn _start() -> ! {
     let fb = Framebuffer::default();
     let mut writer = FramebufferWriter::new(fb_fd, fb);
     let mut buf = [0u8; 128 * core::mem::size_of::<Proc>()];
-    let mut selected_task: usize = 0;
+    let mut selected_proc: usize = 0;
 
     loop {
         writer.clear();
@@ -60,7 +63,7 @@ pub extern "C" fn _start() -> ! {
         for (i, proc) in procs.iter().enumerate() {
             let row_y = y_offset + i * (FONT_SIZE.val() + 8);
 
-            if i == selected_task {
+            if i == selected_proc {
                 writer.draw_line(row_y, FONT_SIZE.val(), Color::Blue);
             }
 
@@ -103,21 +106,38 @@ pub extern "C" fn _start() -> ! {
                             DecodedKey::Unicode(k) => {
                                 if k == 'k' {
                                     write(serial_fd, b"Killing task!!").unwrap();
+                                    match kill(procs[selected_proc].pid) {
+                                        Ok(f) => {
+                                            let found = f != 0;
+                                            write(
+                                                serial_fd,
+                                                format!("Task killed: {}", found).as_bytes(),
+                                            )
+                                            .unwrap();
+                                        }
+                                        Err(e) => {
+                                            write(
+                                                serial_fd,
+                                                format!("Error killing task: {}", e).as_bytes(),
+                                            )
+                                            .unwrap();
+                                        }
+                                    }
                                 }
                             }
                             DecodedKey::RawKey(k) => match k {
                                 KeyCode::ArrowUp => {
-                                    if selected_task > 0 {
-                                        selected_task -= 1;
+                                    if selected_proc > 0 {
+                                        selected_proc -= 1;
                                     }
                                 }
                                 KeyCode::ArrowDown => {
-                                    if selected_task < procs.len() - 1 {
-                                        selected_task += 1;
+                                    if selected_proc < procs.len() - 1 {
+                                        selected_proc += 1;
                                     }
                                 }
                                 KeyCode::Return => {
-                                    let pid = procs[selected_task].pid;
+                                    let pid = procs[selected_proc].pid;
                                     write(
                                         serial_fd,
                                         format!("Restarting task with PID: {}", pid).as_bytes(),

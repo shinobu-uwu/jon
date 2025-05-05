@@ -83,30 +83,23 @@ pub fn init() {
     if let Some(res) = SMP_REQUEST.get_response() {
         let bsp_id = res.bsp_lapic_id();
         info!("BSP LAPIC ID: {}", bsp_id);
-
-        let mut bsp_cpu_info = None;
+        let bsp = res
+            .cpus()
+            .iter()
+            .find(|cpu| cpu.lapic_id == bsp_id)
+            .unwrap();
+        init_cpu(bsp);
 
         for cpu in res.cpus() {
             if cpu.lapic_id == bsp_id {
-                bsp_cpu_info = Some(cpu);
-                info!(
-                    "Found BSP: CPU core {} with LAPIC ID {}",
-                    cpu.id, cpu.lapic_id
-                );
-            } else {
-                info!(
-                    "Starting AP: CPU core {} with LAPIC ID {}",
-                    cpu.id, cpu.lapic_id
-                );
-                cpu.goto_address.write(cpu_entry);
+                continue;
             }
-        }
 
-        if let Some(bsp) = bsp_cpu_info {
-            info!("Initializing BSP (CPU core {})", bsp.id);
-            init_cpu(bsp);
-        } else {
-            panic!("Could not find BSP information!");
+            info!(
+                "Starting AP: CPU core {} with LAPIC ID {}",
+                cpu.id, cpu.lapic_id
+            );
+            cpu.goto_address.write(cpu_entry);
         }
     } else {
         panic!("SMP information not available!");

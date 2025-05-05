@@ -8,14 +8,19 @@ use crate::{
     },
     memory::{address::VirtualAddress, paging::PageFlags, physical::PhysicalMemoryManager},
     pop_scratch, push_scratch,
-    sched::scheduler::{current_pid, current_task, current_task_mut, remove_current_task},
+    sched::{
+        pid::Pid,
+        scheduler::{
+            self, current_pid, current_task, current_task_mut, remove_current_task, remove_task,
+        },
+    },
     scheme::{schemes, CallerContext},
 };
 use libjon::{
-    errno::{EINVAL, ENOENT, ENOMEM},
+    errno::{EINTR, EINVAL, ENOENT, ENOMEM, ESRCH},
     fd::{FileDescriptorFlags, FileDescriptorId},
     path::Path,
-    syscall::{SYS_BRK, SYS_EXIT, SYS_GETPID, SYS_LSEEK, SYS_OPEN, SYS_READ, SYS_WRITE},
+    syscall::{SYS_BRK, SYS_EXIT, SYS_GETPID, SYS_KILL, SYS_LSEEK, SYS_OPEN, SYS_READ, SYS_WRITE},
 };
 use log::{debug, error, info};
 use x86_64::{
@@ -48,7 +53,7 @@ pub(super) fn init(cpu_id: u32) {
 
     match Star::write(user_cs, user_ss, kernel_cs, kernel_ss) {
         Ok(_) => {
-            info!("STAR MSR set successfully");
+            debug!("STAR MSR set successfully");
         }
         Err(e) => {
             panic!("Error setting STAR: {}", e)
@@ -113,6 +118,7 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
         SYS_GETPID => sys_getpid(),
         SYS_LSEEK => sys_lseek(arg1, arg2, arg3),
         SYS_BRK => sys_brk(arg1),
+        SYS_KILL => sys_kill(arg1),
         _ => {
             error!("Invalid syscall number: {}", syscall_number);
             Err(ENOENT)
@@ -180,7 +186,7 @@ fn sys_open(path_ptr: usize, path_len: usize, flags: usize) -> SyscallResult {
 }
 
 fn sys_read(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
-    let task = current_task().expect("ERROR: NO CURRENT TASK");
+    let task = current_task().ok_or(EINTR)?;
     let fd = task
         .fds
         .iter()
@@ -196,7 +202,7 @@ fn sys_read(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
 }
 
 fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
-    let task = current_task().expect("ERROR: NO CURRENT TASK");
+    let task = current_task().ok_or(EINTR)?;
     let fd = task
         .fds
         .iter()
@@ -211,14 +217,14 @@ fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
 }
 
 fn sys_getpid() -> SyscallResult {
-    let task = current_task().expect("ERROR: NO CURRENT TASK");
+    let task = current_task().ok_or(EINTR)?;
     debug!("Current PID: {}", task.pid);
 
     Ok(task.pid.as_usize())
 }
 
 fn sys_lseek(descriptor_id: usize, offset: usize, whence: usize) -> SyscallResult {
-    let task = current_task().expect("ERROR: NO CURRENT TASK");
+    let task = current_task().ok_or(EINTR)?;
     let fd = task
         .fds
         .iter()
@@ -235,7 +241,7 @@ fn sys_lseek(descriptor_id: usize, offset: usize, whence: usize) -> SyscallResul
 }
 
 fn sys_brk(increment: usize) -> SyscallResult {
-    let task = current_task_mut().expect("ERROR: NO CURRENT TASK");
+    let task = current_task_mut().ok_or(EINTR)?;
 
     // For now we only support incrementing brk once
     if task.memory_descriptor.brk != 0 {
@@ -260,4 +266,43 @@ fn sys_brk(increment: usize) -> SyscallResult {
     task.memory_descriptor.brk = new_brk;
 
     Ok(brk_start.as_usize())
+}
+
+fn sys_kill(pid: usize) -> SyscallResult {
+    let pid = Pid::new(pid);
+    match scheduler::get_task(pid) {
+        Some(task) => {
+            if task.pid == current_pid().unwrap() {
+                error!("ERROR: Cannot kill self");
+                return Err(EINVAL);
+            }
+
+            let found = remove_task(pid);
+
+            if !found {
+                return Ok(0);
+            }
+
+            for fd in task.fds.iter() {
+                let schemes = schemes();
+                let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
+                let current_pid = current_pid().expect("ERROR: NO CURRENT PID");
+                scheme
+                    .close(
+                        fd.id,
+                        CallerContext {
+                            pid: current_pid,
+                            scheme: fd.scheme,
+                        },
+                    )
+                    .unwrap();
+            }
+
+            Ok(1)
+        }
+        None => {
+            error!("ERROR: PID {} NOT FOUND", pid);
+            Err(ESRCH)
+        }
+    }
 }

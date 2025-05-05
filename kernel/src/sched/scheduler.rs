@@ -1,11 +1,10 @@
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
-use log::info;
 use spinning_top::RwSpinlock;
 
 use crate::arch::{
     switch_to,
     x86::{
-        cpu::{current_pcr, current_pcr_mut, get_pcr_mut},
+        cpu::{current_pcr, current_pcr_mut, get_pcr_mut, PCRS},
         structures::Registers,
     },
 };
@@ -155,18 +154,19 @@ pub fn remove_current_task() -> Option<Pid> {
 }
 
 pub fn remove_task(pid: Pid) -> bool {
-    let pcr = current_pcr_mut();
+    let pcrs = unsafe { &mut PCRS };
 
-    pcr.sched.run_queue.retain(|&p| p != pid);
+    for pcr in pcrs {
+        pcr.sched.run_queue.retain(|&p| p != pid);
 
-    if pcr.sched.current_pid == Some(pid) {
-        pcr.sched.current_pid = None;
+        if pcr.sched.current_pid == Some(pid) {
+            pcr.sched.current_pid = None;
+        }
     }
 
     let mut tasks = TASKS.write();
     if let Some(task) = tasks.get_mut(&pid) {
         task.state = State::Stopped;
-        tasks.remove(&pid);
         return true;
     }
 

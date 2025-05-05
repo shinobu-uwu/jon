@@ -11,6 +11,7 @@ mod syscall;
 
 use core::arch::asm;
 
+use arch::x86::cpu::current_pcr;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
 use log::{error, info};
@@ -69,7 +70,8 @@ unsafe extern "C" fn kmain() -> ! {
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    error!("{}", info);
+    let pcr = current_pcr();
+    error!("CPU {} panicked: {}", pcr.id, info);
     arch::panic(info);
     hcf();
 }

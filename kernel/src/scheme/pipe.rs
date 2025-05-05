@@ -11,7 +11,11 @@ use libjon::{
 use log::debug;
 use spinning_top::RwSpinlock;
 
-use crate::sched::{fd::FileDescriptor, pid::Pid, scheduler::get_task_mut};
+use crate::sched::{
+    fd::FileDescriptor,
+    pid::Pid,
+    scheduler::{get_task, get_task_mut},
+};
 
 use super::KernelScheme;
 
@@ -147,12 +151,15 @@ impl KernelScheme for PipeScheme {
         Ok(count)
     }
 
-    fn close(
-        &self,
-        _descriptor_id: FileDescriptorId,
-        _ctx: super::CallerContext,
-    ) -> Result<(), i32> {
-        todo!()
+    fn close(&self, descriptor_id: FileDescriptorId, ctx: super::CallerContext) -> Result<(), i32> {
+        let task = get_task_mut(ctx.pid).unwrap();
+        let mut pipes = PIPES.write();
+        let mut paths = PATHS.write();
+        pipes.remove(&descriptor_id);
+        paths.retain(|_, fd| fd != &descriptor_id);
+        task.fds.retain(|desc| desc.id != descriptor_id);
+
+        Ok(())
     }
 }
 
