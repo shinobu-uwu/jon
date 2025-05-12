@@ -46,6 +46,12 @@ pub struct CallerContext {
     pub scheme: SchemeId,
 }
 
+impl CallerContext {
+    pub fn new(pid: Pid, scheme: SchemeId) -> Self {
+        Self { pid, scheme }
+    }
+}
+
 pub trait KernelScheme: Send + Sync + 'static {
     fn open(
         &self,

@@ -1,12 +1,15 @@
 #![no_std]
 #![no_main]
 
-use core::ffi::CStr;
+use core::{ffi::CStr, mem::size_of};
 
 use alloc::{format, vec::Vec};
-use jon_common::syscall::{
-    fs::{open, read, write},
-    task::kill,
+use jon_common::{
+    ipc::Message,
+    syscall::{
+        fs::{open, read, write},
+        task::kill,
+    },
 };
 use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet2, layouts};
 use proc::{Proc, State};
@@ -18,10 +21,11 @@ mod ui;
 
 extern crate alloc;
 
+static mut SERIAL_FD: usize = 0;
+
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    allocator::init();
-    let serial_fd = open("serial:", 0x0).unwrap();
+    init();
     let fb_fd = open("vga:0", 0x0).unwrap();
     let keyboard_fd = open("ps2:", 0x0).unwrap();
     let mut kb_buf = [0u8; 3];
@@ -33,19 +37,12 @@ pub extern "C" fn _start() -> ! {
     let proc_fd = open("proc:", 0x0).unwrap();
     let fb = Framebuffer::default();
     let mut writer = FramebufferWriter::new(fb_fd, fb);
-    let mut buf = [0u8; 128 * core::mem::size_of::<Proc>()];
     let mut selected_proc: usize = 0;
 
     loop {
         writer.clear();
+        let procs = list_procs(proc_fd);
 
-        let bytes_read = read(proc_fd, &mut buf).unwrap();
-        let procs_buf = &buf[..bytes_read];
-        let procs: Vec<Proc> = procs_buf
-            .windows(core::mem::size_of::<Proc>())
-            .step_by(core::mem::size_of::<Proc>())
-            .map(|bytes| Proc::from_bytes(bytes))
-            .collect();
         writer.write_text(
             0,
             0,
@@ -69,9 +66,9 @@ pub extern "C" fn _start() -> ! {
 
             let color = match proc.state {
                 State::Running => Color::Green,
-                State::Blocked => Color::Red,
+                State::Blocked => Color::Cyan,
                 State::Waiting => Color::Yellow,
-                State::Stopped => Color::Cyan,
+                State::Stopped => Color::Red,
             };
             let state_label = match proc.state {
                 State::Running => "Rodando",
@@ -105,8 +102,16 @@ pub extern "C" fn _start() -> ! {
                         match key {
                             DecodedKey::Unicode(k) => {
                                 if k == 'k' {
-                                    write(serial_fd, b"Killing task!!").unwrap();
-                                    match kill(procs[selected_proc].pid) {
+                                    let proc = &procs[selected_proc];
+                                    kill_proc(proc);
+
+                                    if proc.state != State::Running && proc.state != State::Waiting
+                                    {
+                                        write(serial_fd, b"Task not running, cannot kill").unwrap();
+                                        continue;
+                                    }
+
+                                    match kill(proc.pid) {
                                         Ok(f) => {
                                             let found = f != 0;
                                             write(
@@ -123,6 +128,17 @@ pub extern "C" fn _start() -> ! {
                                             .unwrap();
                                         }
                                     }
+
+                                    let fd = open("pipe:1/read", 0x2).unwrap();
+                                    write(
+                                        fd,
+                                        Message::new(
+                                            jon_common::ipc::MessageType::Delete,
+                                            proc.name,
+                                        )
+                                        .to_bytes(),
+                                    )
+                                    .unwrap();
                                 }
                             }
                             DecodedKey::RawKey(k) => match k {
@@ -153,4 +169,29 @@ pub extern "C" fn _start() -> ! {
             Err(_) => continue,
         }
     }
+}
+
+fn init() {
+    allocator::init();
+    unsafe {
+        SERIAL_FD = open("serial:", 0x0).unwrap();
+    }
+}
+
+fn log(message: &str) {
+    unsafe {
+        write(SERIAL_FD, message.as_bytes()).unwrap();
+    }
+}
+
+fn list_procs(proc_fd: usize) -> Vec<Proc> {
+    let mut buf = [0u8; 128 * size_of::<Proc>()];
+    let bytes_read = read(proc_fd, &mut buf).unwrap();
+    let procs_buf = &buf[..bytes_read];
+
+    procs_buf
+        .windows(size_of::<Proc>())
+        .step_by(size_of::<Proc>())
+        .map(|bytes| Proc::from_bytes(bytes))
+        .collect()
 }

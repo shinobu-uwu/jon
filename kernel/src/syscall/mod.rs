@@ -11,18 +11,21 @@ use crate::{
     sched::{
         pid::Pid,
         scheduler::{
-            self, current_pid, current_task, current_task_mut, remove_current_task, remove_task,
+            current_pid, current_task, current_task_mut, get_task, remove_current_task,
+            remove_task, TASKS,
         },
+        task::State,
     },
     scheme::{schemes, CallerContext},
 };
+use alloc::sync::Arc;
 use libjon::{
     errno::{EINTR, EINVAL, ENOENT, ENOMEM, ESRCH},
     fd::{FileDescriptorFlags, FileDescriptorId},
     path::Path,
     syscall::{SYS_BRK, SYS_EXIT, SYS_GETPID, SYS_KILL, SYS_LSEEK, SYS_OPEN, SYS_READ, SYS_WRITE},
 };
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use x86_64::{
     registers::{
         control::{Efer, EferFlags},
@@ -109,6 +112,13 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
     );
 
     debug!("Syscall {} received", syscall_number);
+
+    if let Some(current_task) = current_task() {
+        if current_task.state == State::Stopped {
+            (*registers).rax = -EINVAL as u64;
+            return;
+        }
+    }
 
     let result = match syscall_number {
         SYS_EXIT => sys_exit(arg1),
@@ -248,7 +258,12 @@ fn sys_brk(increment: usize) -> SyscallResult {
         return Err(EINVAL);
     }
 
-    let brk_start = VirtualAddress::new(0x6000_0000 + (increment * task.pid.as_usize()));
+    let brk_start = VirtualAddress::new(0x6000_0000 + (10 * 1024 * 1024 * task.pid.as_usize()));
+
+    if increment > 10 * 1024 * 1024 {
+        return Err(ENOMEM);
+    }
+
     let phys = PMM
         .lock()
         .allocate_contiguous(increment)
@@ -270,39 +285,42 @@ fn sys_brk(increment: usize) -> SyscallResult {
 
 fn sys_kill(pid: usize) -> SyscallResult {
     let pid = Pid::new(pid);
-    match scheduler::get_task(pid) {
-        Some(task) => {
-            if task.pid == current_pid().unwrap() {
-                error!("ERROR: Cannot kill self");
-                return Err(EINVAL);
+    let current_pid = current_pid().expect("ERROR: NO CURRENT PID");
+
+    let task_exists = {
+        let tasks = TASKS.read();
+        tasks.contains_key(&pid)
+    };
+
+    if !task_exists {
+        error!("ERROR: PID {} NOT FOUND", pid);
+        return Err(ESRCH);
+    }
+
+    if pid == current_pid {
+        error!("ERROR: Cannot kill self");
+        return Err(EINVAL);
+    }
+
+    let fds_to_close = {
+        let task = get_task(pid).expect("Task disappeared");
+        task.fds.clone()
+    };
+
+    let found = remove_task(pid);
+
+    for fd in fds_to_close {
+        let scheme = {
+            let schemes = schemes();
+            schemes.get(fd.scheme).map(|s| Arc::new(s))
+        };
+
+        if let Some(scheme) = scheme {
+            if let Err(e) = scheme.close(fd.id, CallerContext::new(pid, fd.scheme)) {
+                warn!("Failed to close fd {:?} for PID {}: {}", fd.id, pid, e);
             }
-
-            let found = remove_task(pid);
-
-            if !found {
-                return Ok(0);
-            }
-
-            for fd in task.fds.iter() {
-                let schemes = schemes();
-                let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
-                let current_pid = current_pid().expect("ERROR: NO CURRENT PID");
-                scheme
-                    .close(
-                        fd.id,
-                        CallerContext {
-                            pid: current_pid,
-                            scheme: fd.scheme,
-                        },
-                    )
-                    .unwrap();
-            }
-
-            Ok(1)
-        }
-        None => {
-            error!("ERROR: PID {} NOT FOUND", pid);
-            Err(ESRCH)
         }
     }
+
+    Ok(found.into())
 }
