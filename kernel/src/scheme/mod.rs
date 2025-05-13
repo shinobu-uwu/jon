@@ -1,4 +1,4 @@
-mod pipe;
+pub mod pipe;
 mod proc;
 pub mod ps2;
 mod schemes;

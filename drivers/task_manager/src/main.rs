@@ -13,6 +13,7 @@ use jon_common::{
 };
 use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet2, layouts};
 use proc::{Proc, State};
+use spinning_top::Spinlock;
 use ui::{Color, FONT_SIZE, Framebuffer, FramebufferWriter};
 
 mod allocator;
@@ -21,7 +22,7 @@ mod ui;
 
 extern crate alloc;
 
-static mut SERIAL_FD: usize = 0;
+static SERIAL_FD: Spinlock<usize> = Spinlock::new(0);
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
@@ -107,29 +108,33 @@ pub extern "C" fn _start() -> ! {
 
                                     if proc.state != State::Running && proc.state != State::Waiting
                                     {
-                                        write(serial_fd, b"Task not running, cannot kill").unwrap();
+                                        write(*SERIAL_FD.lock(), b"Task not running, cannot kill")
+                                            .unwrap();
                                         continue;
                                     }
 
+                                    log("Attempting to kill task...");
                                     match kill(proc.pid) {
                                         Ok(f) => {
                                             let found = f != 0;
                                             write(
-                                                serial_fd,
+                                                *SERIAL_FD.lock(),
                                                 format!("Task killed: {}", found).as_bytes(),
                                             )
                                             .unwrap();
                                         }
                                         Err(e) => {
                                             write(
-                                                serial_fd,
+                                                *SERIAL_FD.lock(),
                                                 format!("Error killing task: {}", e).as_bytes(),
                                             )
                                             .unwrap();
                                         }
                                     }
 
+                                    log("Sending kill message...");
                                     let fd = open("pipe:1/read", 0x2).unwrap();
+                                    log("Writing to pipe...");
                                     write(
                                         fd,
                                         Message::new(
@@ -139,6 +144,7 @@ pub extern "C" fn _start() -> ! {
                                         .to_bytes(),
                                     )
                                     .unwrap();
+                                    log("Message sent.");
                                 }
                             }
                             DecodedKey::RawKey(k) => match k {
@@ -155,7 +161,7 @@ pub extern "C" fn _start() -> ! {
                                 KeyCode::Return => {
                                     let pid = procs[selected_proc].pid;
                                     write(
-                                        serial_fd,
+                                        *SERIAL_FD.lock(),
                                         format!("Restarting task with PID: {}", pid).as_bytes(),
                                     )
                                     .unwrap();
@@ -173,15 +179,11 @@ pub extern "C" fn _start() -> ! {
 
 fn init() {
     allocator::init();
-    unsafe {
-        SERIAL_FD = open("serial:", 0x0).unwrap();
-    }
+    *SERIAL_FD.lock() = open("serial:", 0x0).unwrap();
 }
 
 fn log(message: &str) {
-    unsafe {
-        write(SERIAL_FD, message.as_bytes()).unwrap();
-    }
+    write(*SERIAL_FD.lock(), message.as_bytes()).unwrap();
 }
 
 fn list_procs(proc_fd: usize) -> Vec<Proc> {
@@ -194,4 +196,8 @@ fn list_procs(proc_fd: usize) -> Vec<Proc> {
         .step_by(size_of::<Proc>())
         .map(|bytes| Proc::from_bytes(bytes))
         .collect()
+}
+
+fn kill_proc(proc: &Proc) {
+    log("Killing process...");
 }

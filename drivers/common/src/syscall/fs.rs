@@ -15,3 +15,7 @@ pub fn read(fd: usize, buf: &mut [u8]) -> Result<usize, i32> {
 pub fn lseek(fd: usize, offset: usize, whence: usize) -> Result<usize, i32> {
     syscall(8, fd, offset, whence, 0, 0, 0)
 }
+
+pub fn close(fd: usize) -> Result<(), i32> {
+    syscall(57, fd, 0, 0, 0, 0, 0).map(|_| ())
+}

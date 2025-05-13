@@ -12,6 +12,7 @@ $(call USER_VARIABLE,KARCH,x86_64)
 $(call USER_VARIABLE,QEMUFLAGS,-m 2G -no-reboot -serial stdio -s -smp cpus=4 )
 
 override IMAGE_NAME := template-$(KARCH)
+DRIVER_DIRS := $(wildcard drivers/*)
 
 .PHONY: all
 all: $(IMAGE_NAME).iso
@@ -249,3 +250,9 @@ clean:
 distclean: clean
 	$(MAKE) -C kernel distclean
 	rm -rf limine ovmf
+
+.PHONY: drivers
+drivers:
+	@for dir in $(DRIVER_DIRS); do \
+		cargo build --manifest-path $$dir/Cargo.toml --target x86_64-unknown-none --release; \
+	done

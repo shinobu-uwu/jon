@@ -11,14 +11,14 @@ use crate::{
     sched::{
         pid::Pid,
         scheduler::{
-            current_pid, current_task, current_task_mut, get_task, remove_current_task,
-            remove_task, TASKS,
+            current_pid, current_task, current_task_mut, get_task, get_task_mut, get_tasks,
+            remove_current_task, remove_task, TASKS,
         },
         task::State,
     },
-    scheme::{schemes, CallerContext},
+    scheme::{pipe::FDS, schemes, CallerContext},
 };
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec::Vec};
 use libjon::{
     errno::{EINTR, EINVAL, ENOENT, ENOMEM, ESRCH},
     fd::{FileDescriptorFlags, FileDescriptorId},
@@ -129,6 +129,7 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
         SYS_LSEEK => sys_lseek(arg1, arg2, arg3),
         SYS_BRK => sys_brk(arg1),
         SYS_KILL => sys_kill(arg1),
+        SYS_CLOSE => sys_close(arg1),
         _ => {
             error!("Invalid syscall number: {}", syscall_number);
             Err(ENOENT)
@@ -201,7 +202,7 @@ fn sys_read(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
         .fds
         .iter()
         .find(|desc| desc.id == FileDescriptorId(fd))
-        .expect("ERROR: FD NOT FOUND IN TASK");
+        .ok_or(EINTR)?;
     let schemes = schemes();
     let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
     debug!("Reading from fd: {:?}", fd);
@@ -217,7 +218,7 @@ fn sys_write(fd: usize, buf_ptr: usize, count: usize) -> SyscallResult {
         .fds
         .iter()
         .find(|desc| desc.id == FileDescriptorId(fd))
-        .expect("ERROR: FD NOT FOUND IN TASK");
+        .ok_or(EINTR)?;
     debug!("Found fd: {:?} in task", fd);
     let schemes = schemes();
     let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
@@ -239,7 +240,7 @@ fn sys_lseek(descriptor_id: usize, offset: usize, whence: usize) -> SyscallResul
         .fds
         .iter()
         .find(|desc| desc.id == FileDescriptorId(descriptor_id))
-        .expect("ERROR: FD NOT FOUND IN TASK");
+        .ok_or(EINTR)?;
     let ctx = CallerContext {
         pid: task.pid,
         scheme: fd.scheme,
@@ -283,7 +284,32 @@ fn sys_brk(increment: usize) -> SyscallResult {
     Ok(brk_start.as_usize())
 }
 
+fn sys_close(fd: usize) -> SyscallResult {
+    info!("Got close syscall for fd {}", fd);
+    let task = current_task().ok_or(EINTR)?;
+    let fd = task
+        .fds
+        .iter()
+        .find(|desc| desc.id == FileDescriptorId(fd))
+        .ok_or(EINTR)?;
+    let schemes = schemes();
+    let scheme = schemes.get(fd.scheme).expect("ERROR: SCHEME NO REGISTERED");
+
+    match scheme.close(fd.id, CallerContext::new(task.pid, fd.scheme)) {
+        Ok(_) => {
+            current_task_mut().ok_or(EINTR)?.remove_file(fd.id);
+            debug!("Closed fd: {:?}", fd);
+            Ok(0)
+        }
+        Err(err) => {
+            warn!("Error closing fd: {}", err);
+            Err(err)
+        }
+    }
+}
+
 fn sys_kill(pid: usize) -> SyscallResult {
+    info!("Got kill syscall for PID {}", pid);
     let pid = Pid::new(pid);
     let current_pid = current_pid().expect("ERROR: NO CURRENT PID");
 
@@ -307,20 +333,25 @@ fn sys_kill(pid: usize) -> SyscallResult {
         task.fds.clone()
     };
 
-    let found = remove_task(pid);
-
     for fd in fds_to_close {
         let scheme = {
             let schemes = schemes();
             schemes.get(fd.scheme).map(|s| Arc::new(s))
         };
 
+        info!("Closing fd {:?} for PID {}", fd.id, pid);
         if let Some(scheme) = scheme {
             if let Err(e) = scheme.close(fd.id, CallerContext::new(pid, fd.scheme)) {
                 warn!("Failed to close fd {:?} for PID {}: {}", fd.id, pid, e);
             }
         }
+
+        let task = get_task_mut(pid).ok_or(ESRCH)?;
+        task.fds.clear();
     }
+    info!("Removing task {}", pid);
+
+    let found = remove_task(pid);
 
     Ok(found.into())
 }

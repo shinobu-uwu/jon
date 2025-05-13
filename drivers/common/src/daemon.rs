@@ -4,7 +4,10 @@ use heapless::String;
 use crate::{
     exit,
     ipc::{Message, MessageType},
-    syscall::{self, fs::read},
+    syscall::{
+        self,
+        fs::{close, read},
+    },
     ExitCode,
 };
 
@@ -50,6 +53,7 @@ impl Daemon {
         let message = Message::new(MessageType::Write, name_buf);
         syscall::fs::write(reincarnation_pipe, message.to_bytes()).unwrap();
         self.log(format_args!("Registered daemon {}", name));
+        close(reincarnation_pipe).unwrap();
 
         let response_pipe = syscall::fs::open("pipe:1/write", 0x2).unwrap();
         let mut buf = [0u8; 8];
@@ -65,6 +69,8 @@ impl Daemon {
             self.log(format_args!("Error reading from reincarnation: {}", err));
             return Err(err);
         }
+
+        close(response_pipe).unwrap();
 
         Ok(())
     }
@@ -83,6 +89,7 @@ impl Daemon {
         let message = Message::new(MessageType::Read, name_buf);
         syscall::fs::write(request_pipe, message.to_bytes()).unwrap();
         self.log(format_args!("Sent message to reincarnation"));
+        close(request_pipe).unwrap();
 
         let response_pipe = syscall::fs::open("pipe:1/write", 0x2).unwrap();
         let mut buf = [0u8; 8];
@@ -99,6 +106,7 @@ impl Daemon {
             return None;
         }
 
+        close(response_pipe).unwrap();
         let bytes_read = result.unwrap();
         self.log(format_args!("Read {} bytes from reincarnation", bytes_read));
         self.log(format_args!("Buffer: {:x?}", buf));

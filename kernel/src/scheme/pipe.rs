@@ -8,16 +8,16 @@ use libjon::{
     errno::{EAGAIN, EINVAL, ENOENT},
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
-use log::{debug, info};
+use log::debug;
 use spinning_top::{RwSpinlock, Spinlock};
 
-use crate::sched::{fd::FileDescriptor, pid::Pid, scheduler::get_task_mut};
+use crate::sched::{fd::FileDescriptor, scheduler::get_task_mut};
 
 use super::{CallerContext, KernelScheme};
 
 static NEXT_PIPE_ID: Spinlock<u32> = Spinlock::new(1);
 static PIPES: RwSpinlock<BTreeMap<PipeId, Pipe>> = RwSpinlock::new(BTreeMap::new());
-static FDS: RwSpinlock<BTreeMap<FileDescriptorId, PipeId>> = RwSpinlock::new(BTreeMap::new());
+pub static FDS: RwSpinlock<BTreeMap<FileDescriptorId, PipeId>> = RwSpinlock::new(BTreeMap::new());
 static PATHS: RwSpinlock<BTreeMap<Box<str>, PipeId>> = RwSpinlock::new(BTreeMap::new());
 
 pub struct PipeScheme;
@@ -50,16 +50,16 @@ impl KernelScheme for PipeScheme {
 
                 let mut pipes = PIPES.write();
                 let pipe = pipes.get_mut(pipe_id).ok_or(ENOENT)?;
-
-                if is_read {
-                    pipe.readers.push(ctx.pid);
-                }
-                if is_write {
-                    pipe.writers.push(ctx.pid);
-                }
-
                 let descriptor = FileDescriptor::new(ctx.scheme, flags);
                 let descriptor_id = descriptor.id;
+
+                if is_read {
+                    pipe.readers.push(descriptor_id);
+                }
+                if is_write {
+                    pipe.writers.push(descriptor_id);
+                }
+
                 FDS.write().insert(descriptor_id, *pipe_id);
                 task.add_file(descriptor);
 
@@ -75,18 +75,18 @@ impl KernelScheme for PipeScheme {
                 let descriptor = FileDescriptor::new(ctx.scheme, flags);
                 let id = descriptor.id;
                 debug!("Inserting pipe: {:?}", id);
-                let mut pipe = Pipe::new();
+                let mut pipe = Pipe::new(id);
 
                 match (is_read, is_write) {
                     (true, true) => {
-                        pipe.readers.push(ctx.pid);
-                        pipe.writers.push(ctx.pid);
+                        pipe.readers.push(id);
+                        pipe.writers.push(id);
                     }
                     (true, false) => {
-                        pipe.readers.push(ctx.pid);
+                        pipe.readers.push(id);
                     }
                     (false, true) => {
-                        pipe.writers.push(ctx.pid);
+                        pipe.writers.push(id);
                     }
                     (false, false) => {
                         return Err(EINVAL);
@@ -149,13 +149,56 @@ impl KernelScheme for PipeScheme {
         Ok(count)
     }
 
-    fn close(&self, descriptor_id: FileDescriptorId, _ctx: CallerContext) -> Result<(), i32> {
-        let mut fds = FDS.write();
-        let mut pipes = PIPES.write();
-        let mut paths = PATHS.write();
-        let pipe_id = fds.remove(&descriptor_id).ok_or(ENOENT)?;
-        pipes.remove(&pipe_id);
-        paths.retain(|_, id| id != &pipe_id);
+    fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32> {
+        let (pipe_id, is_root, readers_writers) = {
+            let mut fds = FDS.write();
+            let pipe_id = fds.remove(&descriptor_id).ok_or(EINVAL)?;
+
+            let mut pipes = PIPES.write();
+            let pipe = pipes.get_mut(&pipe_id).ok_or(EINVAL)?;
+
+            let is_root = pipe.root == descriptor_id;
+
+            let readers_writers = if is_root {
+                pipe.readers
+                    .iter()
+                    .chain(pipe.writers.iter())
+                    .filter(|&&fd| fd != descriptor_id)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            } else {
+                if let Some(index) = pipe.readers.iter().position(|&x| x == descriptor_id) {
+                    pipe.readers.remove(index);
+                } else if let Some(index) = pipe.writers.iter().position(|&x| x == descriptor_id) {
+                    pipe.writers.remove(index);
+                }
+                Vec::new()
+            };
+
+            (pipe_id, is_root, readers_writers)
+        };
+
+        // If root, recursively close all other fds *outside the lock*
+        if is_root {
+            for fd in readers_writers {
+                self.close(fd, ctx.clone())?;
+            }
+
+            {
+                let mut paths = PATHS.write();
+                let path = paths
+                    .iter()
+                    .find(|(_, id)| *id == &pipe_id)
+                    .map(|(path, _)| path.clone())
+                    .ok_or(ENOENT)?;
+                debug!("Removing path: {}", path);
+                paths.remove(&path);
+            }
+
+            let mut pipes = PIPES.write();
+            debug!("Removing pipe: {:?}", pipe_id);
+            pipes.remove(&pipe_id);
+        }
 
         Ok(())
     }
@@ -176,15 +219,17 @@ impl PipeId {
 #[derive(Debug)]
 pub struct Pipe {
     pub id: PipeId,
+    pub root: FileDescriptorId,
     pub buffer: VecDeque<Vec<u8>>,
-    readers: Vec<Pid>,
-    writers: Vec<Pid>,
+    readers: Vec<FileDescriptorId>,
+    writers: Vec<FileDescriptorId>,
 }
 
 impl Pipe {
-    pub fn new() -> Self {
+    pub fn new(root: FileDescriptorId) -> Self {
         Self {
             id: PipeId::new(),
+            root,
             buffer: VecDeque::new(),
             readers: Vec::new(),
             writers: Vec::new(),
