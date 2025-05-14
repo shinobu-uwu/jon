@@ -65,17 +65,11 @@ pub extern "C" fn _start() -> ! {
                 writer.draw_line(row_y, FONT_SIZE.val(), Color::Blue);
             }
 
-            let color = match proc.state {
-                State::Running => Color::Green,
-                State::Blocked => Color::Cyan,
-                State::Waiting => Color::Yellow,
-                State::Stopped => Color::Red,
-            };
-            let state_label = match proc.state {
-                State::Running => "Rodando",
-                State::Blocked => "Bloqueado",
-                State::Waiting => "Esperando",
-                State::Stopped => "Parada",
+            let (color, state_label) = match proc.state {
+                State::Running => (Color::Green, "Rodando"),
+                State::Blocked => (Color::Cyan, "Bloqueado"),
+                State::Waiting => (Color::Yellow, "Esperando"),
+                State::Stopped => (Color::Red, "Parada"),
             };
 
             let name = CStr::from_bytes_until_nul(&proc.name)
@@ -101,52 +95,17 @@ pub extern "C" fn _start() -> ! {
                 if let Ok(Some(key_event)) = keyboard.add_byte(kb_buf[0]) {
                     if let Some(key) = keyboard.process_keyevent(key_event) {
                         match key {
-                            DecodedKey::Unicode(k) => {
-                                if k == 'k' {
+                            DecodedKey::Unicode(k) => match k {
+                                'k' => {
                                     let proc = &procs[selected_proc];
                                     kill_proc(proc);
-
-                                    if proc.state != State::Running && proc.state != State::Waiting
-                                    {
-                                        write(*SERIAL_FD.lock(), b"Task not running, cannot kill")
-                                            .unwrap();
-                                        continue;
-                                    }
-
-                                    log("Attempting to kill task...");
-                                    match kill(proc.pid) {
-                                        Ok(f) => {
-                                            let found = f != 0;
-                                            write(
-                                                *SERIAL_FD.lock(),
-                                                format!("Task killed: {}", found).as_bytes(),
-                                            )
-                                            .unwrap();
-                                        }
-                                        Err(e) => {
-                                            write(
-                                                *SERIAL_FD.lock(),
-                                                format!("Error killing task: {}", e).as_bytes(),
-                                            )
-                                            .unwrap();
-                                        }
-                                    }
-
-                                    log("Sending kill message...");
-                                    let fd = open("pipe:1/read", 0x2).unwrap();
-                                    log("Writing to pipe...");
-                                    write(
-                                        fd,
-                                        Message::new(
-                                            jon_common::ipc::MessageType::Delete,
-                                            proc.name,
-                                        )
-                                        .to_bytes(),
-                                    )
-                                    .unwrap();
-                                    log("Message sent.");
                                 }
-                            }
+                                'r' => {
+                                    let proc = &procs[selected_proc];
+                                    restart_proc(proc);
+                                }
+                                _ => {}
+                            },
                             DecodedKey::RawKey(k) => match k {
                                 KeyCode::ArrowUp => {
                                     if selected_proc > 0 {
@@ -199,5 +158,40 @@ fn list_procs(proc_fd: usize) -> Vec<Proc> {
 }
 
 fn kill_proc(proc: &Proc) {
-    log("Killing process...");
+    if proc.state != State::Running && proc.state != State::Waiting {
+        write(*SERIAL_FD.lock(), b"Task not running, cannot kill").unwrap();
+        return;
+    }
+
+    log("Attempting to kill task...");
+
+    match kill(proc.pid) {
+        Ok(f) => {
+            let found = f != 0;
+            write(
+                *SERIAL_FD.lock(),
+                format!("Task killed: {}", found).as_bytes(),
+            )
+            .unwrap();
+        }
+        Err(e) => {
+            write(
+                *SERIAL_FD.lock(),
+                format!("Error killing task: {}", e).as_bytes(),
+            )
+            .unwrap();
+        }
+    }
+
+    log("Sending kill message...");
+    let fd = open("pipe:1/read", 0x2).unwrap();
+    log("Writing to pipe...");
+    write(
+        fd,
+        Message::new(jon_common::ipc::MessageType::Delete, proc.name).to_bytes(),
+    )
+    .unwrap();
+    log("Message sent.");
 }
+
+fn restart_proc(proc: &Proc) {}
