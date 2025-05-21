@@ -2,7 +2,6 @@ use alloc::{string::String, vec::Vec};
 use libjon::fd::FileDescriptorId;
 use log::{debug, info};
 use spinning_top::Spinlock;
-use x86_64::instructions::interrupts;
 
 use crate::{
     arch::x86::{cpu::current_pcr, structures::Registers},
@@ -23,6 +22,14 @@ const USER_STACK_START: usize = 0x0000700000000000;
 const STACK_SIZE: usize = 0x8000; // 32 KiB
 static IDLE_BINARY: Spinlock<Option<(MemoryDescriptor, VirtualAddress)>> = Spinlock::new(None);
 static LOADER: Spinlock<ElfLoader> = Spinlock::new(ElfLoader::new());
+pub const BINARIES: [&[u8]; 4] = [
+    include_bytes!(
+        "../../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
+    ),
+    include_bytes!("../../../drivers/task_manager/target/x86_64-unknown-none/release/task_manager"),
+    include_bytes!("../../../drivers/random/target/x86_64-unknown-none/release/random"),
+    include_bytes!("../../../drivers/random_echo/target/x86_64-unknown-none/release/random_echo"),
+];
 
 #[derive(Debug)]
 pub struct Task {
@@ -70,7 +77,7 @@ impl Task {
             STACK_SIZE,
         );
         let mut context = Registers::new();
-        let bin_addr = VirtualAddress::new(BINARY_START + (pid.as_usize() - 1) * PAGE_SIZE * 20); // TODO: Use a better dynamic address
+        let bin_addr = VirtualAddress::new(BINARY_START + (pid.as_usize() - 1) * PAGE_SIZE * 128); // TODO: Use a better dynamic address
         let loader = ElfLoader::new();
         let (memory_descriptor, rip) = loader.load(bin_addr, binary).unwrap();
         debug!("Loaded binary at {:#x?}", bin_addr);
@@ -92,6 +99,22 @@ impl Task {
             fds: Vec::new(),
             next_fd: 1,
         }
+    }
+
+    pub fn reincarnation() -> Self {
+        Self::new("reincarnation", &BINARIES[0][..])
+    }
+
+    pub fn task_manager() -> Self {
+        Self::new("task_manager", &BINARIES[1][..])
+    }
+
+    pub fn random() -> Self {
+        Self::new("random", &BINARIES[2][..])
+    }
+
+    pub fn random_echo() -> Self {
+        Self::new("random-echo", &BINARIES[3][..])
     }
 
     pub fn idle() -> Self {

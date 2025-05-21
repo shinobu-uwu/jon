@@ -16,7 +16,7 @@ use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
 use log::{error, info};
 use output::logger;
-use sched::scheduler::{self, add_task};
+use sched::scheduler::{self, add_task, TASKS};
 use sched::task::Task;
 use x86_64::instructions::interrupts::{self, enable};
 
@@ -44,24 +44,11 @@ unsafe extern "C" fn kmain() -> ! {
     logger::init().unwrap();
     arch::init();
     interrupts::disable();
-    let task1 = Task::new(
-        "reincarnation",
-        include_bytes!(
-            "../../drivers/reincarnation/target/x86_64-unknown-none/release/reincarnation"
-        ),
-    );
+    let task1 = Task::reincarnation();
     add_task(task1, Some(0));
-    let task2 = Task::new(
-        "random",
-        include_bytes!("../../drivers/random/target/x86_64-unknown-none/release/random"),
-    );
+    let task2 = Task::random();
     add_task(task2, Some(0));
-    let task3 = Task::new(
-        "task_manager",
-        include_bytes!(
-            "../../drivers/task_manager/target/x86_64-unknown-none/release/task_manager"
-        ),
-    );
+    let task3 = Task::task_manager();
     add_task(task3, Some(1));
     interrupts::enable();
 

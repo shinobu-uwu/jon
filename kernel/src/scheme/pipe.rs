@@ -22,6 +22,23 @@ static PATHS: RwSpinlock<BTreeMap<Box<str>, PipeId>> = RwSpinlock::new(BTreeMap:
 
 pub struct PipeScheme;
 
+impl PipeScheme {
+    fn with_pipe_mut<F>(&self, descriptor_id: FileDescriptorId, f: F) -> Result<usize, i32>
+    where
+        F: FnOnce(&mut Pipe) -> Result<usize, i32>,
+    {
+        let pipe_id = {
+            let fds = FDS.read();
+            *fds.get(&descriptor_id).ok_or(EINVAL)?
+        };
+
+        let mut pipes = PIPES.write();
+        let pipe = pipes.get_mut(&pipe_id).ok_or(EINVAL)?;
+
+        f(pipe)
+    }
+}
+
 impl KernelScheme for PipeScheme {
     fn open(
         &self,
@@ -116,19 +133,13 @@ impl KernelScheme for PipeScheme {
         count: usize,
     ) -> Result<usize, i32> {
         debug!("Reading from pipe: {:?}", descriptor_id);
-        let mut pipes = PIPES.write();
-        let fds = FDS.read();
-        let pipe_id = fds.get(&descriptor_id).ok_or(ENOENT)?;
-        let pipe = pipes.get_mut(pipe_id).ok_or(ENOENT)?;
+        self.with_pipe_mut(descriptor_id, |pipe| {
+            let message = pipe.buffer.pop_front().ok_or(EAGAIN)?;
+            let bytes_to_read = count.min(message.len());
+            buf[..bytes_to_read].copy_from_slice(&message[..bytes_to_read]);
 
-        debug!("Pipe len before pop: {}", pipe.buffer.len());
-        let message = pipe.buffer.pop_front().ok_or(EAGAIN)?;
-        debug!("Pipe len after pop: {}", pipe.buffer.len());
-
-        let bytes_to_read = count.min(message.len());
-        buf[..bytes_to_read].copy_from_slice(&message[..bytes_to_read]);
-
-        Ok(bytes_to_read)
+            Ok(bytes_to_read)
+        })
     }
 
     fn write(
@@ -137,16 +148,13 @@ impl KernelScheme for PipeScheme {
         buf: &[u8],
         count: usize,
     ) -> Result<usize, i32> {
-        let mut pipes = PIPES.write();
-        let fds = FDS.read();
-        let pipe_id = fds.get(&descriptor_id).ok_or(ENOENT)?;
-        let pipe = pipes.get_mut(&pipe_id).ok_or(ENOENT)?;
+        self.with_pipe_mut(descriptor_id, |pipe| {
+            let bytes_to_write = count.min(buf.len());
+            let message = Vec::from(&buf[..bytes_to_write]);
+            pipe.buffer.push_back(message);
 
-        debug!("Pipe len before push: {}", pipe.buffer.len());
-        pipe.buffer.push_back(Vec::from(buf));
-        debug!("Pipe len after push: {}", pipe.buffer.len());
-
-        Ok(count)
+            Ok(bytes_to_write)
+        })
     }
 
     fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32> {

@@ -1,3 +1,16 @@
+use alloc::{format, vec::Vec};
+use jon_common::{
+    ipc::Message,
+    syscall::{
+        fs::{open, read, write},
+        task::kill,
+    },
+};
+
+use crate::{SERIAL_FD, log};
+
+pub const NEW_PROCS: [&str; 4] = ["random", "filesystem", "null", "audio"];
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct Proc {
@@ -28,4 +41,53 @@ pub enum State {
     Blocked,
     Waiting,
     Stopped,
+}
+
+pub fn list_procs(proc_fd: usize) -> Vec<Proc> {
+    let mut buf = [0u8; 128 * size_of::<Proc>()];
+    let bytes_read = read(proc_fd, &mut buf).unwrap();
+    let procs_buf = &buf[..bytes_read];
+
+    procs_buf
+        .windows(size_of::<Proc>())
+        .step_by(size_of::<Proc>())
+        .map(|bytes| Proc::from_bytes(bytes))
+        .collect()
+}
+
+pub fn kill_proc(proc: &Proc) {
+    if proc.state != State::Running && proc.state != State::Waiting {
+        write(*SERIAL_FD.lock(), b"Task not running, cannot kill").unwrap();
+        return;
+    }
+
+    log("Attempting to kill task...");
+
+    match kill(proc.pid) {
+        Ok(f) => {
+            let found = f != 0;
+            write(
+                *SERIAL_FD.lock(),
+                format!("Task killed: {}", found).as_bytes(),
+            )
+            .unwrap();
+        }
+        Err(e) => {
+            write(
+                *SERIAL_FD.lock(),
+                format!("Error killing task: {}", e).as_bytes(),
+            )
+            .unwrap();
+        }
+    }
+
+    log("Sending kill message...");
+    let fd = open("pipe:1/read", 0x2).unwrap();
+    log("Writing to pipe...");
+    write(
+        fd,
+        Message::new(jon_common::ipc::MessageType::Delete, proc.name).to_bytes(),
+    )
+    .unwrap();
+    log("Message sent.");
 }

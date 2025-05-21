@@ -7,3 +7,4 @@ pub const SYS_READ: usize = 63;
 pub const SYS_GETPID: usize = 39;
 pub const SYS_BRK: usize = 12;
 pub const SYS_KILL: usize = 62;
+pub const SYS_SPAWN: usize = 220;

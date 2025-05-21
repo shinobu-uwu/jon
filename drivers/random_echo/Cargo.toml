@@ -1,0 +1,15 @@
+[package]
+name = "random_echo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+jon_common = { path = "../common" }
+heapless = "0.8.0"
+
+[profile.dev]
+panic = "abort"
+debug = true
+
+[profile.release]
+panic = "abort"

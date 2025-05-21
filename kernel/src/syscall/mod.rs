@@ -11,19 +11,22 @@ use crate::{
     sched::{
         pid::Pid,
         scheduler::{
-            current_pid, current_task, current_task_mut, get_task, get_task_mut, get_tasks,
+            add_task, current_pid, current_task, current_task_mut, get_task, get_task_mut,
             remove_current_task, remove_task, TASKS,
         },
-        task::State,
+        task::{State, Task},
     },
-    scheme::{pipe::FDS, schemes, CallerContext},
+    scheme::{schemes, CallerContext},
 };
-use alloc::{sync::Arc, vec::Vec};
+use alloc::sync::Arc;
 use libjon::{
     errno::{EINTR, EINVAL, ENOENT, ENOMEM, ESRCH},
     fd::{FileDescriptorFlags, FileDescriptorId},
     path::Path,
-    syscall::{SYS_BRK, SYS_EXIT, SYS_GETPID, SYS_KILL, SYS_LSEEK, SYS_OPEN, SYS_READ, SYS_WRITE},
+    syscall::{
+        SYS_BRK, SYS_CLOSE, SYS_EXIT, SYS_GETPID, SYS_KILL, SYS_LSEEK, SYS_OPEN, SYS_READ,
+        SYS_SPAWN, SYS_WRITE,
+    },
 };
 use log::{debug, error, info, warn};
 use x86_64::{
@@ -129,6 +132,7 @@ pub unsafe extern "C" fn handle_syscall(registers: *mut Scratch) {
         SYS_LSEEK => sys_lseek(arg1, arg2, arg3),
         SYS_BRK => sys_brk(arg1),
         SYS_KILL => sys_kill(arg1),
+        SYS_SPAWN => sys_spawn(arg1),
         SYS_CLOSE => sys_close(arg1),
         _ => {
             error!("Invalid syscall number: {}", syscall_number);
@@ -354,4 +358,17 @@ fn sys_kill(pid: usize) -> SyscallResult {
     let found = remove_task(pid);
 
     Ok(found.into())
+}
+
+fn sys_spawn(index: usize) -> SyscallResult {
+    let task = match index {
+        0..=1 => return Err(EINVAL),
+        2 => Task::random(),
+        3 => Task::random_echo(),
+        _ => return Err(EINVAL),
+    };
+    let pid = task.pid;
+    add_task(task, None);
+
+    Ok(pid.as_usize())
 }

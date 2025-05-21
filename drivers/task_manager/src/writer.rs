@@ -1,30 +1,7 @@
 use alloc::vec::Vec;
-use noto_sans_mono_bitmap::{FontWeight, RasterHeight, get_raster};
+use noto_sans_mono_bitmap::{FontWeight, get_raster};
 
-pub const FONT_SIZE: RasterHeight = RasterHeight::Size32;
-pub const WIDHTH: u64 = 1280;
-pub const HEIGHT: u64 = 720;
-pub const BPP: u16 = 4;
-pub const PITCH: u64 = 5120;
-
-#[derive(Debug)]
-pub struct Framebuffer {
-    pub width: u64,
-    pub height: u64,
-    pub bpp: u16,
-    pub pitch: u64,
-}
-
-impl Default for Framebuffer {
-    fn default() -> Self {
-        Self {
-            width: WIDHTH,
-            height: HEIGHT,
-            bpp: BPP,
-            pitch: PITCH,
-        }
-    }
-}
+use crate::ui::{Color, FONT_SIZE, Framebuffer};
 
 pub struct FramebufferWriter {
     fd: usize,
@@ -33,32 +10,6 @@ pub struct FramebufferWriter {
     dirty_start: (usize, usize),
     dirty_end: (usize, usize),
 }
-
-#[derive(Debug, Clone, Copy)]
-pub enum Color {
-    Red,
-    Green,
-    Blue,
-    Yellow,
-    Cyan,
-    Magenta,
-    White,
-}
-
-impl Color {
-    fn to_bgra(self) -> [u8; 4] {
-        match self {
-            Color::Red => [0, 0, 255, 255],
-            Color::Green => [0, 255, 0, 255],
-            Color::Blue => [255, 0, 0, 255],
-            Color::Yellow => [0, 255, 255, 255],
-            Color::Cyan => [255, 255, 0, 255],
-            Color::Magenta => [255, 0, 255, 255],
-            Color::White => [255, 255, 255, 255],
-        }
-    }
-}
-
 impl FramebufferWriter {
     pub fn new(fd: usize, framebuffer: Framebuffer) -> Self {
         let buffer = alloc::vec![0; (framebuffer.height * framebuffer.pitch) as usize];
@@ -73,6 +24,10 @@ impl FramebufferWriter {
         };
         writer.clear();
         writer
+    }
+
+    pub fn force_clear(&mut self) {
+        self.buffer.fill(0);
     }
 
     pub fn clear(&mut self) {
@@ -132,6 +87,35 @@ impl FramebufferWriter {
                     self.buffer[pixel_offset + 2] = r;
                     self.buffer[pixel_offset + 3] = a;
                     self.mark_dirty(col, row);
+                }
+            }
+        }
+    }
+
+    pub fn draw_square(&mut self, x: usize, y: usize, size: usize, color: Color) {
+        let [b, g, r, a] = color.to_bgra();
+        let line_bytes = self.framebuffer.pitch as usize;
+        let bpp = self.framebuffer.bpp as usize;
+
+        for dy in 0..size {
+            let py = y + dy;
+            if py >= self.height() {
+                break;
+            }
+
+            for dx in 0..size {
+                let px = x + dx;
+                if px >= self.width() {
+                    break;
+                }
+
+                let pixel_offset = py * line_bytes + px * bpp;
+                if pixel_offset + 4 <= self.buffer.len() {
+                    self.buffer[pixel_offset + 0] = b;
+                    self.buffer[pixel_offset + 1] = g;
+                    self.buffer[pixel_offset + 2] = r;
+                    self.buffer[pixel_offset + 3] = a;
+                    self.mark_dirty(px, py);
                 }
             }
         }
