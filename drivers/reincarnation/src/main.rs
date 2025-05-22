@@ -40,7 +40,7 @@ fn main(daemon: &Daemon, message: Message) -> Result<usize, i32> {
                 }
                 None => {
                     daemon.log(format_args!("Daemon {} not found", daemon_name));
-                    Err(-2) // ENOENT
+                    Err(2) // ENOENT
                 }
             }
         }
@@ -57,7 +57,7 @@ fn main(daemon: &Daemon, message: Message) -> Result<usize, i32> {
 
             if names.get(&name).is_some() {
                 daemon.log(format_args!("Daemon {} already registered", daemon_name));
-                return Err(-2); // EEXIST
+                return Err(2); // EEXIST
             }
 
             names.insert(name, message.origin).unwrap();
@@ -80,7 +80,7 @@ fn main(daemon: &Daemon, message: Message) -> Result<usize, i32> {
 
             if names.remove(&name).is_none() {
                 daemon.log(format_args!("Daemon {} not registered", daemon_name));
-                return Err(-2); // ENOENT
+                return Err(2); // ENOENT
             }
 
             daemon.log(format_args!("Unregistered daemon: {}", daemon_name));

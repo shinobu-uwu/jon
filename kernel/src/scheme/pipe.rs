@@ -5,7 +5,7 @@ use alloc::{
     vec::Vec,
 };
 use libjon::{
-    errno::{EAGAIN, EINVAL, ENOENT},
+    errno::{EAGAIN, EBADF, EINVAL, ENOENT},
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
 use log::debug;
@@ -29,7 +29,7 @@ impl PipeScheme {
     {
         let pipe_id = {
             let fds = FDS.read();
-            *fds.get(&descriptor_id).ok_or(EINVAL)?
+            *fds.get(&descriptor_id).ok_or(EBADF)?
         };
 
         let mut pipes = PIPES.write();

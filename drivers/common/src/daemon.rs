@@ -110,9 +110,16 @@ impl Daemon {
         let bytes_read = result.unwrap();
         self.log(format_args!("Read {} bytes from reincarnation", bytes_read));
         self.log(format_args!("Buffer: {:x?}", buf));
-        let pid = usize::from_ne_bytes(buf[..bytes_read].try_into().unwrap());
-        self.log(format_args!("Daemon {} pid: {}", name, pid));
-        Some(pid)
+        let result = isize::from_ne_bytes(buf);
+        self.log(format_args!("Result: {}", result));
+
+        if result > 0 {
+            let pid = usize::from_ne_bytes(buf);
+            self.log(format_args!("Daemon {} pid: {}", name, pid));
+            Some(pid)
+        } else {
+            None
+        }
     }
 
     pub fn start(&self) -> ! {
@@ -139,7 +146,9 @@ impl Daemon {
                             syscall::fs::write(self.write_pipe, &n.to_ne_bytes()).unwrap();
                         }
                         Err(e) => {
-                            syscall::fs::write(self.write_pipe, &(-e).to_ne_bytes()).unwrap();
+                            self.log(format_args!("Error handling message: {}", e));
+                            let buf = (-e as isize).to_ne_bytes();
+                            syscall::fs::write(self.write_pipe, &buf).unwrap();
                         }
                     }
                 }
@@ -191,8 +200,7 @@ pub fn get_daemon_pid(name: &str) -> Option<usize> {
         return None;
     }
 
-    let bytes_read = result.unwrap();
-    let pid = usize::from_ne_bytes(buf[..bytes_read].try_into().unwrap());
+    let pid = usize::from_ne_bytes(buf);
 
     Some(pid)
 }
