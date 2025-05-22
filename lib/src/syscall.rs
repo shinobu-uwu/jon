@@ -8,3 +8,5 @@ pub const SYS_GETPID: usize = 39;
 pub const SYS_BRK: usize = 12;
 pub const SYS_KILL: usize = 62;
 pub const SYS_SPAWN: usize = 220;
+pub const SYS_CPU_REMOVE: usize = 221;
+pub const SYS_CPU_ADD: usize = 222;

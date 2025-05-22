@@ -10,6 +10,7 @@ pub struct FramebufferWriter {
     dirty_start: (usize, usize),
     dirty_end: (usize, usize),
 }
+
 impl FramebufferWriter {
     pub fn new(fd: usize, framebuffer: Framebuffer) -> Self {
         let buffer = alloc::vec![0; (framebuffer.height * framebuffer.pitch) as usize];
@@ -31,18 +32,19 @@ impl FramebufferWriter {
     }
 
     pub fn clear(&mut self) {
-        let (start_x, start_y) = self.dirty_start;
-        let (end_x, end_y) = self.dirty_end;
-
-        if start_x >= end_x || start_y >= end_y {
-            return;
-        }
-
-        for y in start_y..end_y {
-            let start = y * self.width() + start_x;
-            let end = y * self.width() + end_x;
-            self.buffer[start..end].fill(0);
-        }
+        self.force_clear();
+        // let (start_x, start_y) = self.dirty_start;
+        // let (end_x, end_y) = self.dirty_end;
+        //
+        // if start_x >= end_x || start_y >= end_y {
+        //     return;
+        // }
+        //
+        // for y in start_y..end_y {
+        //     let start = y * self.width() + start_x;
+        //     let end = y * self.width() + end_x;
+        //     self.buffer[start..end].fill(0);
+        // }
     }
 
     pub fn width(&self) -> usize {
@@ -56,7 +58,6 @@ impl FramebufferWriter {
     pub fn write_text(&mut self, mut x: usize, y: usize, text: &str, color: Color) {
         for ch in text.chars() {
             self.write_char(x, y, ch, color);
-            // Advance x after each char
             if let Some(glyph) = get_raster(ch, FontWeight::Regular, FONT_SIZE) {
                 x += glyph.width() + 8;
             } else {
@@ -87,35 +88,6 @@ impl FramebufferWriter {
                     self.buffer[pixel_offset + 2] = r;
                     self.buffer[pixel_offset + 3] = a;
                     self.mark_dirty(col, row);
-                }
-            }
-        }
-    }
-
-    pub fn draw_square(&mut self, x: usize, y: usize, size: usize, color: Color) {
-        let [b, g, r, a] = color.to_bgra();
-        let line_bytes = self.framebuffer.pitch as usize;
-        let bpp = self.framebuffer.bpp as usize;
-
-        for dy in 0..size {
-            let py = y + dy;
-            if py >= self.height() {
-                break;
-            }
-
-            for dx in 0..size {
-                let px = x + dx;
-                if px >= self.width() {
-                    break;
-                }
-
-                let pixel_offset = py * line_bytes + px * bpp;
-                if pixel_offset + 4 <= self.buffer.len() {
-                    self.buffer[pixel_offset + 0] = b;
-                    self.buffer[pixel_offset + 1] = g;
-                    self.buffer[pixel_offset + 2] = r;
-                    self.buffer[pixel_offset + 3] = a;
-                    self.mark_dirty(px, py);
                 }
             }
         }
@@ -166,22 +138,5 @@ impl FramebufferWriter {
 
     pub fn flush(&mut self) {
         jon_common::syscall::fs::write(self.fd, &self.buffer).unwrap();
-        // let (start_x, start_y) = self.dirty_start;
-        // let (end_x, end_y) = self.dirty_end;
-        // let bpp = self.framebuffer.bpp as usize;
-        // let pitch = self.framebuffer.pitch as usize;
-        //
-        // if start_x >= end_x || start_y >= end_y {
-        //     return;
-        // }
-        //
-        // for y in start_y..end_y {
-        //     let start = y * pitch + start_x * bpp;
-        //     let end = y * pitch + end_x * bpp;
-        //     let back_slice = &self.buffer[start..end];
-        // }
-        //
-        // self.dirty_start = (0, 0);
-        // self.dirty_end = (self.width(), self.height());
     }
 }

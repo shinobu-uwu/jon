@@ -14,11 +14,11 @@ use core::arch::asm;
 use arch::x86::cpu::current_pcr;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
-use log::{error, info};
+use log::error;
 use output::logger;
-use sched::scheduler::{self, add_task, TASKS};
+use sched::scheduler::add_task;
 use sched::task::Task;
-use x86_64::instructions::interrupts::{self, enable};
+use x86_64::instructions::interrupts::{self};
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -45,11 +45,11 @@ unsafe extern "C" fn kmain() -> ! {
     arch::init();
     interrupts::disable();
     let task1 = Task::reincarnation();
-    add_task(task1, Some(0));
+    add_task(task1);
     let task2 = Task::random();
-    add_task(task2, Some(0));
+    add_task(task2);
     let task3 = Task::task_manager();
-    add_task(task3, Some(1));
+    add_task(task3);
     interrupts::enable();
 
     hcf();

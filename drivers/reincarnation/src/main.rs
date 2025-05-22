@@ -61,7 +61,10 @@ fn main(daemon: &Daemon, message: Message) -> Result<usize, i32> {
             }
 
             names.insert(name, message.origin).unwrap();
-            daemon.log(format_args!("Registered daemon: {}", daemon_name));
+            daemon.log(format_args!(
+                "Registered daemon: {}, pid: {}",
+                daemon_name, message.origin
+            ));
 
             Ok(0)
         }

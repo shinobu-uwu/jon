@@ -368,7 +368,7 @@ fn sys_spawn(index: usize) -> SyscallResult {
         _ => return Err(EINVAL),
     };
     let pid = task.pid;
-    add_task(task, None);
+    add_task(task);
 
     Ok(pid.as_usize())
 }

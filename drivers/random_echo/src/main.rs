@@ -34,7 +34,14 @@ fn init() -> (usize, usize, usize) {
     let serial_fd = open("serial:", 0x0).unwrap();
     let random_pid = {
         let daemon = Daemon::new(|_daemon, _message| Ok(0));
-        daemon.get_daemon_pid("random").unwrap()
+        let mut pid = daemon.get_daemon_pid("random");
+
+        log(serial_fd, format_args!("Daemon PID: {:?}", pid));
+        while pid.is_none() {
+            pid = daemon.get_daemon_pid("random");
+        }
+
+        pid.unwrap()
     };
     log(serial_fd, format_args!("Random PID: {}", random_pid));
     let mut random_path: String<16> = String::new();

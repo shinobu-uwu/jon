@@ -1,5 +1,5 @@
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
-use spinning_top::RwSpinlock;
+use spinning_top::{RwSpinlock, Spinlock};
 
 use crate::arch::{
     switch_to,
@@ -15,6 +15,7 @@ use super::{
 };
 
 pub static TASKS: RwSpinlock<BTreeMap<Pid, Task>> = RwSpinlock::new(BTreeMap::new());
+static NEXT_CPU_ID: Spinlock<u64> = Spinlock::new(0);
 
 const QUANTUM_BASE: u64 = 8;
 const HIGH_PRIORITY_BONUS: u64 = 24;
@@ -28,7 +29,6 @@ pub unsafe fn schedule(stack_frame: &Registers) {
         pcr.sched.current_pid = Some(idle_pid);
         let task = get_task_mut(idle_pid).unwrap();
         task.state = State::Running;
-
         return switch_to(None, task, stack_frame);
     }
 
@@ -36,16 +36,15 @@ pub unsafe fn schedule(stack_frame: &Registers) {
         Some(pid) => {
             let current_task = get_task_mut(pid).unwrap();
             current_task.quantum += 1;
-
             let quantum_limit = match current_task.priority {
                 Priority::High => QUANTUM_BASE + HIGH_PRIORITY_BONUS,
                 Priority::Normal => QUANTUM_BASE,
                 Priority::Low => QUANTUM_BASE - LOW_PRIORITY_PENALTY,
             };
-
             if current_task.quantum >= quantum_limit {
                 current_task.quantum = 0;
-                if matches!(current_task.state, State::Running) {
+                // Only add to run queue if it's not the idle task and it's still running
+                if matches!(current_task.state, State::Running) && pid != pcr.idle_task() {
                     pcr.sched.run_queue.push_back(pid);
                 }
                 pcr.sched.run_queue.pop_front()
@@ -55,26 +54,20 @@ pub unsafe fn schedule(stack_frame: &Registers) {
         }
         None => pcr.sched.run_queue.pop_front(),
     };
-
     match (next_pid, pcr.sched.current_pid) {
         (Some(next), Some(current)) => {
             {
                 let prev_task = get_task_mut(current).unwrap();
                 prev_task.state = State::Waiting;
                 prev_task.quantum = 0; // Reset quantum when switching away
-
                 let next_task = get_task_mut(next).unwrap();
                 next_task.state = State::Running;
             }
-
             pcr.sched.current_pid = Some(next);
-
             let prev_task_ptr = get_task_mut(current).unwrap() as *mut Task;
             let next_task_ptr = get_task_mut(next).unwrap() as *mut Task;
-
             let prev_task_ref = &mut *prev_task_ptr;
             let next_task_ref = &*next_task_ptr;
-
             switch_to(Some(prev_task_ref), next_task_ref, stack_frame);
         }
         (Some(next), None) => {
@@ -83,7 +76,6 @@ pub unsafe fn schedule(stack_frame: &Registers) {
                 let next_task = tasks_guard.get_mut(&next).unwrap();
                 next_task.state = State::Running;
             }
-
             pcr.sched.current_pid = Some(next);
             let next_task_ptr = get_task_mut(next).unwrap() as *mut Task;
             let next_task_ref = &*next_task_ptr;
@@ -173,11 +165,14 @@ pub fn remove_task(pid: Pid) -> bool {
     false
 }
 
-pub fn add_task(task: Task, cpu_affinity: Option<u64>) {
-    let pcr = match cpu_affinity {
-        Some(cpu_id) => get_pcr_mut(cpu_id),
-        None => current_pcr_mut(),
+pub fn add_task(task: Task) {
+    let cpu_id = {
+        let mut cpu_id = NEXT_CPU_ID.lock();
+        let id = *cpu_id;
+        *cpu_id = (*cpu_id + 1) % unsafe { PCRS.len() as u64 };
+        id
     };
+    let pcr = get_pcr_mut(cpu_id);
     let pid = task.pid;
     TASKS.write().insert(pid, task);
     pcr.sched.run_queue.push_back(pid);

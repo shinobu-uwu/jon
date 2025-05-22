@@ -1,13 +1,4 @@
-use crate::{proc::NEW_PROCS, writer::FramebufferWriter};
-use core::ffi::CStr;
-
-use alloc::format;
 use noto_sans_mono_bitmap::RasterHeight;
-
-use crate::{
-    Y_OFFSET,
-    proc::{Proc, State},
-};
 
 pub mod screen;
 

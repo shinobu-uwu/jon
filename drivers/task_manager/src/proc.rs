@@ -9,8 +9,6 @@ use jon_common::{
 
 use crate::{SERIAL_FD, log};
 
-pub const NEW_PROCS: [&str; 4] = ["random", "filesystem", "null", "audio"];
-
 #[repr(C)]
 #[derive(Debug)]
 pub struct Proc {
@@ -89,5 +87,15 @@ pub fn kill_proc(proc: &Proc) {
         Message::new(jon_common::ipc::MessageType::Delete, proc.name).to_bytes(),
     )
     .unwrap();
+    let fd = open("pipe:1/write", 0x1).unwrap();
+    let mut result = read(fd, &mut [0u8; 8]);
+
+    while let Err(err) = result {
+        if err == 11 {
+            // EAGAIN: no data yet, try again
+            result = read(fd, &mut [0u8; 8]);
+            continue;
+        }
+    }
     log("Message sent.");
 }

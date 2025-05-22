@@ -159,7 +159,7 @@ impl Daemon {
     }
 
     pub fn log(&self, args: Arguments) {
-        let mut message = String::<128>::new();
+        let mut message = String::<512>::new();
         write!(message, "{}", args).unwrap();
         syscall::fs::write(self.serial, message.as_bytes()).unwrap();
     }
