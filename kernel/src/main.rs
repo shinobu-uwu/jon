@@ -44,12 +44,10 @@ unsafe extern "C" fn kmain() -> ! {
     logger::init().unwrap();
     arch::init();
     interrupts::disable();
-    let task1 = Task::reincarnation();
-    add_task(task1);
-    let task2 = Task::random();
-    add_task(task2);
-    let task3 = Task::task_manager();
-    add_task(task3);
+    let reincarnation = Task::reincarnation();
+    add_task(reincarnation);
+    let task_manager = Task::task_manager();
+    add_task(task_manager);
     interrupts::enable();
 
     hcf();

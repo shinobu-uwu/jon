@@ -82,9 +82,11 @@ pub fn kill_proc(proc: &Proc) {
     log("Sending kill message...");
     let fd = open("pipe:1/read", 0x2).unwrap();
     log("Writing to pipe...");
+    let mut pid_buf = [0u8; 16];
+    pid_buf[..8].copy_from_slice(&proc.pid.to_ne_bytes());
     write(
         fd,
-        Message::new(jon_common::ipc::MessageType::Delete, proc.name).to_bytes(),
+        Message::new(jon_common::ipc::MessageType::Delete, pid_buf).to_bytes(),
     )
     .unwrap();
     let fd = open("pipe:1/write", 0x1).unwrap();

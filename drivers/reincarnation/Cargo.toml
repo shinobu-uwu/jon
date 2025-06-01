@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 jon_common = { path = "../common" }
-heapless = "0.8.0"
 spinning_top = "0.3.0"
+buddy_system_allocator = "0.11.0"
 
 [profile.dev]
 panic = "abort"
