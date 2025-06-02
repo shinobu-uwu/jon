@@ -45,7 +45,7 @@ pub extern "C" fn _start() -> ! {
 }
 
 fn init() -> (usize, usize, usize) {
-    let serial_fd = open("serial:", 0x0).unwrap();
+    let serial_fd = open("serial:", 0x1).unwrap();
     let random_pid = get_random_pid(serial_fd);
     log(serial_fd, format_args!("Random PID: {}", random_pid));
     let mut random_path: String<16> = String::new();

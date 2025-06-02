@@ -4,7 +4,7 @@ use crate::println;
 
 pub fn init() -> Result<(), SetLoggerError> {
     log::set_logger(&Logger)?;
-    log::set_max_level(log::LevelFilter::Info);
+    log::set_max_level(log::LevelFilter::Warn);
     Ok(())
 }
 

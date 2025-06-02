@@ -46,11 +46,14 @@ pub fn list_procs(proc_fd: usize) -> Vec<Proc> {
     let bytes_read = read(proc_fd, &mut buf).unwrap();
     let procs_buf = &buf[..bytes_read];
 
-    procs_buf
+    let mut procs: Vec<Proc> = procs_buf
         .windows(size_of::<Proc>())
         .step_by(size_of::<Proc>())
         .map(|bytes| Proc::from_bytes(bytes))
-        .collect()
+        .collect();
+    procs.sort_by_key(|p| p.state == State::Stopped);
+
+    procs
 }
 
 pub fn kill_proc(proc: &Proc) {

@@ -3,12 +3,12 @@ use libjon::{
     errno::EINVAL,
     fd::{FileDescriptorFlags, FileDescriptorId},
 };
-use log::{debug, info};
+use log::{debug, info, warn};
 use spinning_top::RwSpinlock;
 
 use crate::sched::{
     fd::FileDescriptor,
-    scheduler::{current_pid, get_task_mut},
+    scheduler::{current_task, get_task_mut},
 };
 
 use super::{CallerContext, KernelScheme};
@@ -22,11 +22,12 @@ impl KernelScheme for SerialScheme {
     fn open(
         &self,
         _path: &str,
-        _flags: FileDescriptorFlags,
+        flags: FileDescriptorFlags,
         ctx: CallerContext,
     ) -> Result<FileDescriptorId, i32> {
         let task = get_task_mut(ctx.pid).ok_or(EINVAL)?;
-        let descriptor = FileDescriptor::new(ctx.scheme, FileDescriptorFlags::O_RDWR);
+        let mut descriptor = FileDescriptor::new(ctx.scheme, FileDescriptorFlags::O_RDWR);
+        descriptor.flags = flags;
         let id = descriptor.id;
         DESCRIPTORS.write().insert(id);
         task.add_file(descriptor);
@@ -52,9 +53,20 @@ impl KernelScheme for SerialScheme {
         let descriptors = DESCRIPTORS.read();
         descriptors.get(&descriptor_id).ok_or(EINVAL)?;
 
-        let pid = current_pid().unwrap();
+        let task = current_task().unwrap();
+        let pid = task.pid;
+        let descriptor = task
+            .fds
+            .iter()
+            .find(|fd| fd.id == descriptor_id)
+            .ok_or(EINVAL)?;
         let str = unsafe { core::str::from_utf8_unchecked(buf) };
-        info!("Task {pid} said: {str}");
+
+        if descriptor.flags.contains(FileDescriptorFlags::O_RDONLY) {
+            warn!("Task {pid} said: {str}");
+        } else {
+            info!("Task {pid} said: {str}");
+        }
 
         Ok(buf.len())
     }
