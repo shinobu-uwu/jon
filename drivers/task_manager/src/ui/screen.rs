@@ -91,7 +91,7 @@ impl Screen {
         self.writer.write_text(
             0,
             self.legend_offset(),
-            "K - Matar | N - Novo | R - Reiniciar",
+            "K - Matar | N - Novo",
             Color::White,
         );
 
