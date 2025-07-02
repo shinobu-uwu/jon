@@ -4,7 +4,7 @@ use log::{debug, info};
 use spinning_top::Spinlock;
 
 use crate::{
-    arch::x86::{cpu::current_pcr, structures::Registers},
+    arch::x86::structures::Registers,
     memory::{
         address::VirtualAddress,
         loader::{elf::ElfLoader, Loader},
@@ -119,12 +119,9 @@ impl Task {
 
     pub fn idle() -> Self {
         let pid = Pid::new(Pid::next_pid());
-        info!("Creating idle task with PID {}", pid);
         let mut binary = IDLE_BINARY.lock();
 
         if binary.is_none() {
-            info!("Loading idle task binary @ PCR {}", current_pcr().id);
-
             *binary = Some(
                 LOADER
                     .lock()

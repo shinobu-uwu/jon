@@ -72,7 +72,12 @@ pub unsafe fn schedule(stack_frame: &Registers) {
         }
         (Some(next), None) => {
             {
-                let mut tasks_guard = TASKS.write();
+                let mut tasks_guard = match TASKS.try_write() {
+                    Some(guard) => guard,
+                    None => {
+                        return;
+                    }
+                };
                 let next_task = tasks_guard.get_mut(&next).unwrap();
                 next_task.state = State::Running;
             }

@@ -27,14 +27,12 @@ impl PipeScheme {
     where
         F: FnOnce(&mut Pipe) -> Result<usize, i32>,
     {
-        let pipe_id = {
-            let fds = FDS.read();
-            *fds.get(&descriptor_id).ok_or(EBADF)?
-        };
+        let fds = FDS.read();
+        let pipe_id = *fds.get(&descriptor_id).ok_or(EBADF)?;
+        drop(fds);
 
         let mut pipes = PIPES.write();
         let pipe = pipes.get_mut(&pipe_id).ok_or(EINVAL)?;
-
         f(pipe)
     }
 }
@@ -46,16 +44,18 @@ impl KernelScheme for PipeScheme {
         flags: FileDescriptorFlags,
         ctx: CallerContext,
     ) -> Result<FileDescriptorId, i32> {
-        debug!("Opening  pipe: {}", path,);
+        debug!("Opening pipe: {}", path);
         let task = get_task_mut(ctx.pid).ok_or(ENOENT)?;
         debug!("Found task: {}", task.pid);
-
-        let mut paths = PATHS.write();
 
         let is_read = flags.contains(FileDescriptorFlags::O_RDONLY)
             || flags.contains(FileDescriptorFlags::O_RDWR);
         let is_write = flags.contains(FileDescriptorFlags::O_WRONLY)
             || flags.contains(FileDescriptorFlags::O_RDWR);
+
+        let mut fds = FDS.write();
+        let mut pipes = PIPES.write();
+        let mut paths = PATHS.write();
 
         let fd = match paths.get(path.into()) {
             Some(pipe_id) => {
@@ -65,7 +65,6 @@ impl KernelScheme for PipeScheme {
                     return Err(EINVAL);
                 }
 
-                let mut pipes = PIPES.write();
                 let pipe = pipes.get_mut(pipe_id).ok_or(ENOENT)?;
                 let descriptor = FileDescriptor::new(ctx.scheme, flags);
                 let descriptor_id = descriptor.id;
@@ -77,7 +76,7 @@ impl KernelScheme for PipeScheme {
                     pipe.writers.push(descriptor_id);
                 }
 
-                FDS.write().insert(descriptor_id, *pipe_id);
+                fds.insert(descriptor_id, *pipe_id);
                 task.add_file(descriptor);
 
                 descriptor_id
@@ -111,13 +110,13 @@ impl KernelScheme for PipeScheme {
                 }
 
                 let pipe_id = pipe.id;
-                PIPES.write().insert(pipe.id, pipe);
+                pipes.insert(pipe.id, pipe);
                 task.add_file(descriptor);
 
                 debug!("Inserting path: {} -> {:?}", path, id);
                 let real_path = format!("{}/{}", task.pid, path);
                 paths.insert(real_path.into(), pipe_id);
-                FDS.write().insert(id, pipe_id);
+                fds.insert(id, pipe_id);
 
                 id
             }
@@ -157,55 +156,73 @@ impl KernelScheme for PipeScheme {
         })
     }
 
-    fn close(&self, descriptor_id: FileDescriptorId, ctx: CallerContext) -> Result<(), i32> {
-        let (pipe_id, is_root, readers_writers) = {
-            let mut fds = FDS.write();
-            let pipe_id = fds.remove(&descriptor_id).ok_or(EINVAL)?;
+    fn close(&self, descriptor_id: FileDescriptorId, _ctx: CallerContext) -> Result<(), i32> {
+        let mut close_queue = VecDeque::new();
+        close_queue.push_back(descriptor_id);
 
-            let mut pipes = PIPES.write();
-            let pipe = pipes.get_mut(&pipe_id).ok_or(EINVAL)?;
-
-            let is_root = pipe.root == descriptor_id;
-
-            let readers_writers = if is_root {
-                pipe.readers
-                    .iter()
-                    .chain(pipe.writers.iter())
-                    .filter(|&&fd| fd != descriptor_id)
-                    .cloned()
-                    .collect::<Vec<_>>()
-            } else {
-                if let Some(index) = pipe.readers.iter().position(|&x| x == descriptor_id) {
-                    pipe.readers.remove(index);
-                } else if let Some(index) = pipe.writers.iter().position(|&x| x == descriptor_id) {
-                    pipe.writers.remove(index);
-                }
-                Vec::new()
+        while let Some(current_fd) = close_queue.pop_front() {
+            let pipe_id = {
+                let mut fds = FDS.write();
+                fds.remove(&current_fd)
             };
 
-            (pipe_id, is_root, readers_writers)
-        };
+            let pipe_id = match pipe_id {
+                Some(id) => id,
+                None => continue,
+            };
 
-        // If root, recursively close all other fds *outside the lock*
-        if is_root {
-            for fd in readers_writers {
-                self.close(fd, ctx.clone())?;
+            let (is_root, other_fds) = {
+                let mut pipes = PIPES.write();
+                if let Some(pipe) = pipes.get_mut(&pipe_id) {
+                    if pipe.root == current_fd {
+                        let others = pipe
+                            .readers
+                            .iter()
+                            .chain(pipe.writers.iter())
+                            .filter(|&&fd| fd != current_fd)
+                            .cloned()
+                            .collect();
+                        (true, others)
+                    } else {
+                        pipe.readers.retain(|&fd| fd != current_fd);
+                        pipe.writers.retain(|&fd| fd != current_fd);
+                        (false, Vec::new())
+                    }
+                } else {
+                    continue;
+                }
+            };
+
+            if is_root {
+                let path_to_remove = {
+                    let paths = PATHS.read();
+                    paths
+                        .iter()
+                        .find(|(_, id)| **id == pipe_id)
+                        .map(|(p, _)| p.clone())
+                };
+
+                if let Some(path) = path_to_remove {
+                    let mut paths = PATHS.write();
+                    paths.remove(&path);
+                    debug!("Removed path: {}", path);
+                }
+
+                {
+                    let mut pipes = PIPES.write();
+                    pipes.remove(&pipe_id);
+                    debug!("Removed pipe: {:?}", pipe_id);
+                }
+
+                {
+                    let mut fds = FDS.write();
+                    for fd in &other_fds {
+                        fds.remove(fd);
+                    }
+                }
+
+                close_queue.extend(other_fds);
             }
-
-            {
-                let mut paths = PATHS.write();
-                let path = paths
-                    .iter()
-                    .find(|(_, id)| *id == &pipe_id)
-                    .map(|(path, _)| path.clone())
-                    .ok_or(ENOENT)?;
-                debug!("Removing path: {}", path);
-                paths.remove(&path);
-            }
-
-            let mut pipes = PIPES.write();
-            debug!("Removing pipe: {:?}", pipe_id);
-            pipes.remove(&pipe_id);
         }
 
         Ok(())
